@@ -14,7 +14,296 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      bath_grooming_appointments: {
+        Row: {
+          client_id: string
+          created_at: string | null
+          end_datetime: string
+          google_event_id: string | null
+          grooming_type: string | null
+          id: string
+          notes: string | null
+          optional_services: string[] | null
+          pet_id: string
+          price: number | null
+          service_type: string
+          start_datetime: string
+          status: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          client_id: string
+          created_at?: string | null
+          end_datetime: string
+          google_event_id?: string | null
+          grooming_type?: string | null
+          id?: string
+          notes?: string | null
+          optional_services?: string[] | null
+          pet_id: string
+          price?: number | null
+          service_type: string
+          start_datetime: string
+          status?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          client_id?: string
+          created_at?: string | null
+          end_datetime?: string
+          google_event_id?: string | null
+          grooming_type?: string | null
+          id?: string
+          notes?: string | null
+          optional_services?: string[] | null
+          pet_id?: string
+          price?: number | null
+          service_type?: string
+          start_datetime?: string
+          status?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      clients: {
+        Row: {
+          created_at: string | null
+          email: string | null
+          id: string
+          last_interaction: string | null
+          last_purchase: string | null
+          name: string
+          whatsapp: string
+        }
+        Insert: {
+          created_at?: string | null
+          email?: string | null
+          id?: string
+          last_interaction?: string | null
+          last_purchase?: string | null
+          name: string
+          whatsapp: string
+        }
+        Update: {
+          created_at?: string | null
+          email?: string | null
+          id?: string
+          last_interaction?: string | null
+          last_purchase?: string | null
+          name?: string
+          whatsapp?: string
+        }
+        Relationships: []
+      }
+      google_calendar_tokens: {
+        Row: {
+          access_token: string
+          calendar_id_banho_tosa: string | null
+          calendar_id_hotelzinho: string | null
+          created_at: string | null
+          expires_at: string
+          id: string
+          refresh_token: string
+          updated_at: string | null
+        }
+        Insert: {
+          access_token: string
+          calendar_id_banho_tosa?: string | null
+          calendar_id_hotelzinho?: string | null
+          created_at?: string | null
+          expires_at: string
+          id?: string
+          refresh_token: string
+          updated_at?: string | null
+        }
+        Update: {
+          access_token?: string
+          calendar_id_banho_tosa?: string | null
+          calendar_id_hotelzinho?: string | null
+          created_at?: string | null
+          expires_at?: string
+          id?: string
+          refresh_token?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      health_reminders: {
+        Row: {
+          affected_services: string[] | null
+          client_id: string
+          created_at: string | null
+          days_remaining: number | null
+          expires_at: string
+          id: string
+          pet_id: string
+          reminder_type: string
+          resolved_at: string | null
+          sent_to_n8n_at: string | null
+          status: string | null
+        }
+        Insert: {
+          affected_services?: string[] | null
+          client_id: string
+          created_at?: string | null
+          days_remaining?: number | null
+          expires_at: string
+          id?: string
+          pet_id: string
+          reminder_type: string
+          resolved_at?: string | null
+          sent_to_n8n_at?: string | null
+          status?: string | null
+        }
+        Update: {
+          affected_services?: string[] | null
+          client_id?: string
+          created_at?: string | null
+          days_remaining?: number | null
+          expires_at?: string
+          id?: string
+          pet_id?: string
+          reminder_type?: string
+          resolved_at?: string | null
+          sent_to_n8n_at?: string | null
+          status?: string | null
+        }
+        Relationships: []
+      }
+      hotel_stays: {
+        Row: {
+          check_in: string
+          check_out: string
+          client_id: string
+          created_at: string | null
+          daily_rate: number
+          google_event_id: string | null
+          id: string
+          is_creche: boolean | null
+          items_brought: string[] | null
+          notes: string | null
+          pet_id: string
+          status: string | null
+          total_price: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          check_in: string
+          check_out: string
+          client_id: string
+          created_at?: string | null
+          daily_rate: number
+          google_event_id?: string | null
+          id?: string
+          is_creche?: boolean | null
+          items_brought?: string[] | null
+          notes?: string | null
+          pet_id: string
+          status?: string | null
+          total_price?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          check_in?: string
+          check_out?: string
+          client_id?: string
+          created_at?: string | null
+          daily_rate?: number
+          google_event_id?: string | null
+          id?: string
+          is_creche?: boolean | null
+          items_brought?: string[] | null
+          notes?: string | null
+          pet_id?: string
+          status?: string | null
+          total_price?: number | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      pet_health: {
+        Row: {
+          antipulgas_valid_until: string | null
+          created_at: string | null
+          id: string
+          pet_id: string
+          updated_at: string | null
+          vaccine_name: string | null
+          vaccine_valid_until: string | null
+        }
+        Insert: {
+          antipulgas_valid_until?: string | null
+          created_at?: string | null
+          id?: string
+          pet_id: string
+          updated_at?: string | null
+          vaccine_name?: string | null
+          vaccine_valid_until?: string | null
+        }
+        Update: {
+          antipulgas_valid_until?: string | null
+          created_at?: string | null
+          id?: string
+          pet_id?: string
+          updated_at?: string | null
+          vaccine_name?: string | null
+          vaccine_valid_until?: string | null
+        }
+        Relationships: []
+      }
+      pets: {
+        Row: {
+          breed: string | null
+          client_id: string
+          coat_type: string | null
+          created_at: string | null
+          grooming_type: string | null
+          id: string
+          name: string
+          photo_url: string | null
+          preferred_service: string | null
+          size: string | null
+          species: string
+          weight: number | null
+        }
+        Insert: {
+          breed?: string | null
+          client_id: string
+          coat_type?: string | null
+          created_at?: string | null
+          grooming_type?: string | null
+          id?: string
+          name: string
+          photo_url?: string | null
+          preferred_service?: string | null
+          size?: string | null
+          species: string
+          weight?: number | null
+        }
+        Update: {
+          breed?: string | null
+          client_id?: string
+          coat_type?: string | null
+          created_at?: string | null
+          grooming_type?: string | null
+          id?: string
+          name?: string
+          photo_url?: string | null
+          preferred_service?: string | null
+          size?: string | null
+          species?: string
+          weight?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pets_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
