@@ -10,8 +10,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { toast } from '@/hooks/use-toast';
-import { mockClients, mockPets, dogBreeds, catBreeds, getBreedsBySpecies } from '@/data/mockData';
-import { Client, Pet, FurType, Species, PetSize, PreferredService, GroomingType, BreedInfo } from '@/types';
+import { mockPets, getBreedsBySpecies } from '@/data/mockData';
+import { Pet, FurType, Species, PetSize, PreferredService, GroomingType, BreedInfo } from '@/types';
+import { supabase } from '@/integrations/supabase/client';
 
 const furTypeLabels: Record<FurType, string> = {
   curto: 'Curto',
@@ -46,12 +47,91 @@ const triggerWebhook = async (event: string, data: Record<string, unknown>) => {
   // });
 };
 
+interface ClientDB {
+  id: string;
+  name: string;
+  whatsapp: string;
+  email: string | null;
+  created_at: string | null;
+}
+
 const Clientes = () => {
-  const [clients] = useState<Client[]>(mockClients);
+  const [clients, setClients] = useState<ClientDB[]>([]);
   const [pets, setPets] = useState<Pet[]>(mockPets);
   const [searchTerm, setSearchTerm] = useState('');
   const [isClientDialogOpen, setIsClientDialogOpen] = useState(false);
   const [isPetDialogOpen, setIsPetDialogOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  
+  // Client form state
+  const [clientForm, setClientForm] = useState({
+    name: '',
+    whatsapp: '',
+    email: '',
+  });
+
+  // Fetch clients from database
+  const fetchClients = async () => {
+    const { data, error } = await supabase
+      .from('clients')
+      .select('*')
+      .order('created_at', { ascending: false });
+    
+    if (error) {
+      console.error('Erro ao carregar clientes:', error);
+      return;
+    }
+    
+    setClients(data || []);
+  };
+
+  // Load clients on mount
+  useEffect(() => {
+    fetchClients();
+  }, []);
+
+  // Save client to database
+  const handleSaveClient = async () => {
+    if (!clientForm.name || !clientForm.whatsapp) {
+      toast({
+        title: "Campos obrigatórios",
+        description: "Preencha nome e WhatsApp.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsLoading(true);
+    
+    const { error } = await supabase
+      .from('clients')
+      .insert({
+        name: clientForm.name,
+        whatsapp: clientForm.whatsapp,
+        email: clientForm.email || null,
+      });
+
+    setIsLoading(false);
+
+    if (error) {
+      console.error('Erro ao salvar cliente:', error);
+      toast({
+        title: "Erro ao cadastrar",
+        description: "Não foi possível salvar o cliente.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    toast({
+      title: "Cliente cadastrado!",
+      description: `${clientForm.name} foi salvo com sucesso.`,
+    });
+
+    setClientForm({ name: '', whatsapp: '', email: '' });
+    setIsClientDialogOpen(false);
+    fetchClients();
+  };
   
   // New Pet Form State
   const [petForm, setPetForm] = useState({
@@ -421,7 +501,10 @@ const Clientes = () => {
               </DialogContent>
             </Dialog>
             
-            <Dialog open={isClientDialogOpen} onOpenChange={setIsClientDialogOpen}>
+            <Dialog open={isClientDialogOpen} onOpenChange={(open) => {
+              setIsClientDialogOpen(open);
+              if (!open) setClientForm({ name: '', whatsapp: '', email: '' });
+            }}>
               <DialogTrigger asChild>
                 <Button className="bg-gradient-primary hover:opacity-90">
                   <Plus className="w-4 h-4 mr-2" />
@@ -435,18 +518,35 @@ const Clientes = () => {
                 <div className="space-y-4 py-4">
                   <div>
                     <Label>Nome Completo</Label>
-                    <Input placeholder="Ex: Maria Silva" />
+                    <Input 
+                      placeholder="Ex: Maria Silva" 
+                      value={clientForm.name}
+                      onChange={(e) => setClientForm(prev => ({ ...prev, name: e.target.value }))}
+                    />
                   </div>
                   <div>
                     <Label>WhatsApp</Label>
-                    <Input placeholder="Ex: 11999887766" />
+                    <Input 
+                      placeholder="Ex: 11999887766" 
+                      value={clientForm.whatsapp}
+                      onChange={(e) => setClientForm(prev => ({ ...prev, whatsapp: e.target.value }))}
+                    />
                   </div>
                   <div>
                     <Label>Email (opcional)</Label>
-                    <Input type="email" placeholder="Ex: maria@email.com" />
+                    <Input 
+                      type="email" 
+                      placeholder="Ex: maria@email.com" 
+                      value={clientForm.email}
+                      onChange={(e) => setClientForm(prev => ({ ...prev, email: e.target.value }))}
+                    />
                   </div>
-                  <Button className="w-full bg-gradient-primary hover:opacity-90">
-                    Cadastrar Cliente
+                  <Button 
+                    className="w-full bg-gradient-primary hover:opacity-90"
+                    onClick={handleSaveClient}
+                    disabled={isLoading}
+                  >
+                    {isLoading ? 'Salvando...' : 'Cadastrar Cliente'}
                   </Button>
                 </div>
               </DialogContent>
