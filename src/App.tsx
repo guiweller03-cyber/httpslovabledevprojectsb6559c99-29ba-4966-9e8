@@ -9,6 +9,7 @@ import BanhoTosa from "./pages/BanhoTosa";
 import Hotelzinho from "./pages/Hotelzinho";
 import Planos from "./pages/Planos";
 import Clientes from "./pages/Clientes";
+import Lembretes from "./pages/Lembretes";
 import Inativos from "./pages/Inativos";
 import FrenteCaixa from "./pages/FrenteCaixa";
 import WhatsAppPanel from "./pages/WhatsAppPanel";
@@ -30,6 +31,7 @@ const App = () => (
             <Route path="/hotelzinho" element={<Hotelzinho />} />
             <Route path="/planos" element={<Planos />} />
             <Route path="/clientes" element={<Clientes />} />
+            <Route path="/lembretes" element={<Lembretes />} />
             <Route path="/inativos" element={<Inativos />} />
             <Route path="/caixa" element={<FrenteCaixa />} />
             <Route path="/whatsapp" element={<WhatsAppPanel />} />
