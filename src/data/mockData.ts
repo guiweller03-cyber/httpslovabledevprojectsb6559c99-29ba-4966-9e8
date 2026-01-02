@@ -7,8 +7,67 @@ import {
   Sale,
   WhatsAppConversation,
   WhatsAppMessage,
-  DashboardStats 
+  DashboardStats,
+  BreedInfo,
+  PetSize
 } from '@/types';
+
+// Dog breeds with suggested sizes
+export const dogBreeds: BreedInfo[] = [
+  { name: 'SRD (Sem Raça Definida)', suggestedSize: 'medio' },
+  { name: 'Golden Retriever', suggestedSize: 'grande' },
+  { name: 'Labrador Retriever', suggestedSize: 'grande' },
+  { name: 'Pastor Alemão', suggestedSize: 'grande' },
+  { name: 'Rottweiler', suggestedSize: 'grande' },
+  { name: 'Husky Siberiano', suggestedSize: 'grande' },
+  { name: 'Boxer', suggestedSize: 'grande' },
+  { name: 'Akita', suggestedSize: 'grande' },
+  { name: 'Doberman', suggestedSize: 'grande' },
+  { name: 'Dogue Alemão', suggestedSize: 'grande' },
+  { name: 'São Bernardo', suggestedSize: 'grande' },
+  { name: 'Bulldog Inglês', suggestedSize: 'medio' },
+  { name: 'Bulldog Francês', suggestedSize: 'pequeno' },
+  { name: 'Cocker Spaniel', suggestedSize: 'medio' },
+  { name: 'Beagle', suggestedSize: 'medio' },
+  { name: 'Border Collie', suggestedSize: 'medio' },
+  { name: 'Chow Chow', suggestedSize: 'medio' },
+  { name: 'Shar Pei', suggestedSize: 'medio' },
+  { name: 'Pitbull', suggestedSize: 'medio' },
+  { name: 'Poodle', suggestedSize: 'pequeno' },
+  { name: 'Poodle Toy', suggestedSize: 'pequeno' },
+  { name: 'Yorkshire Terrier', suggestedSize: 'pequeno' },
+  { name: 'Maltês', suggestedSize: 'pequeno' },
+  { name: 'Shih Tzu', suggestedSize: 'pequeno' },
+  { name: 'Lhasa Apso', suggestedSize: 'pequeno' },
+  { name: 'Pinscher', suggestedSize: 'pequeno' },
+  { name: 'Chihuahua', suggestedSize: 'pequeno' },
+  { name: 'Pug', suggestedSize: 'pequeno' },
+  { name: 'Spitz Alemão', suggestedSize: 'pequeno' },
+  { name: 'Schnauzer Miniatura', suggestedSize: 'pequeno' },
+  { name: 'Dachshund (Salsicha)', suggestedSize: 'pequeno' },
+  { name: 'Bichon Frisé', suggestedSize: 'pequeno' },
+  { name: 'Jack Russell Terrier', suggestedSize: 'pequeno' },
+];
+
+// Cat breeds
+export const catBreeds: BreedInfo[] = [
+  { name: 'SRD (Sem Raça Definida)', suggestedSize: 'pequeno' },
+  { name: 'Persa', suggestedSize: 'medio' },
+  { name: 'Siamês', suggestedSize: 'medio' },
+  { name: 'Maine Coon', suggestedSize: 'grande' },
+  { name: 'Ragdoll', suggestedSize: 'grande' },
+  { name: 'British Shorthair', suggestedSize: 'medio' },
+  { name: 'Angorá', suggestedSize: 'medio' },
+  { name: 'Bengal', suggestedSize: 'medio' },
+  { name: 'Scottish Fold', suggestedSize: 'medio' },
+  { name: 'Sphynx', suggestedSize: 'medio' },
+];
+
+export const getBreedsBySpecies = (species: 'cachorro' | 'gato' | 'outro'): BreedInfo[] => {
+  if (species === 'cachorro') return dogBreeds;
+  if (species === 'gato') return catBreeds;
+  return [{ name: 'SRD (Sem Raça Definida)', suggestedSize: 'pequeno' as PetSize }];
+};
 
 // Mock Clients
 export const mockClients: Client[] = [
@@ -56,8 +115,11 @@ export const mockPets: Pet[] = [
     name: 'Thor',
     species: 'cachorro',
     breed: 'Golden Retriever',
+    size: 'grande',
     furType: 'longo',
     weight: 32,
+    preferredService: 'banho_tosa',
+    groomingType: 'tosa_tesoura',
   },
   {
     id: '2',
@@ -65,8 +127,10 @@ export const mockPets: Pet[] = [
     name: 'Luna',
     species: 'gato',
     breed: 'Persa',
+    size: 'medio',
     furType: 'muito_peludo',
     weight: 4.5,
+    preferredService: 'banho',
   },
   {
     id: '3',
@@ -74,8 +138,10 @@ export const mockPets: Pet[] = [
     name: 'Max',
     species: 'cachorro',
     breed: 'Bulldog Francês',
+    size: 'pequeno',
     furType: 'curto',
     weight: 12,
+    preferredService: 'banho',
   },
   {
     id: '4',
@@ -83,8 +149,11 @@ export const mockPets: Pet[] = [
     name: 'Bella',
     species: 'cachorro',
     breed: 'Poodle',
+    size: 'pequeno',
     furType: 'medio',
     weight: 8,
+    preferredService: 'banho_tosa',
+    groomingType: 'tosa_bebe',
   },
   {
     id: '5',
@@ -92,8 +161,11 @@ export const mockPets: Pet[] = [
     name: 'Rex',
     species: 'cachorro',
     breed: 'Pastor Alemão',
+    size: 'grande',
     furType: 'medio',
     weight: 35,
+    preferredService: 'banho_tosa',
+    groomingType: 'tosa_padrao_raca',
   },
 ];
 

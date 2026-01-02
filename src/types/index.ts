@@ -12,6 +12,15 @@ export interface Client {
 // Pet types
 export type FurType = 'curto' | 'medio' | 'longo' | 'muito_peludo';
 export type Species = 'cachorro' | 'gato' | 'outro';
+export type PetSize = 'pequeno' | 'medio' | 'grande';
+export type PreferredService = 'banho' | 'banho_tosa';
+export type GroomingType = 'tosa_higienica' | 'tosa_tesoura' | 'tosa_maquina' | 'tosa_bebe' | 'tosa_padrao_raca' | 'sem_preferencia';
+
+// Breed data for auto-suggesting size
+export interface BreedInfo {
+  name: string;
+  suggestedSize: PetSize;
+}
 
 export interface Pet {
   id: string;
@@ -19,9 +28,13 @@ export interface Pet {
   name: string;
   species: Species;
   breed: string;
+  size: PetSize;
   furType: FurType;
-  weight: number;
+  weight?: number;
   photoUrl?: string;
+  // Service preferences
+  preferredService?: PreferredService;
+  groomingType?: GroomingType;
 }
 
 // Grooming (Banho & Tosa) types
@@ -124,6 +137,9 @@ export interface DashboardStats {
 export type WebhookEvent = 
   | 'novo_cliente'
   | 'novo_pet'
+  | 'pet_atualizado'
+  | 'preferencia_servico_definida'
+  | 'tipo_tosa_alterado'
   | 'novo_agendamento'
   | 'pet_pronto'
   | 'plano_utilizado'
