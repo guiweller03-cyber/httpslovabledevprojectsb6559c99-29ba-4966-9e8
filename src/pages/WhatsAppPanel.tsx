@@ -1,12 +1,11 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { MessageSquare, Bot, User, Pause, Play, Send, Circle } from 'lucide-react';
+import { MessageSquare, Bot, User, Pause, Play, UserCheck, Circle, ExternalLink, Activity } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
-import { mockConversations, mockMessages, mockClients } from '@/data/mockData';
+import { mockConversations, mockMessages } from '@/data/mockData';
 import { WhatsAppConversation, WhatsAppMessage, ConversationStatus } from '@/types';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -19,6 +18,13 @@ const statusConfig: Record<ConversationStatus, { label: string; color: string; b
   pausada: { label: 'Pausada', color: 'text-muted-foreground', bgColor: 'bg-muted' },
 };
 
+// Simula disparo de webhook para o n8n
+const triggerWebhook = async (event: string, data: Record<string, unknown>) => {
+  console.log(`[WEBHOOK] ${event}:`, data);
+  // Em produção: fetch('https://seu-n8n.com/webhook/...', { method: 'POST', body: JSON.stringify(data) })
+  return true;
+};
+
 const WhatsAppPanel = () => {
   const { toast } = useToast();
   const [conversations, setConversations] = useState<WhatsAppConversation[]>(mockConversations);
@@ -26,14 +32,21 @@ const WhatsAppPanel = () => {
   const [selectedConversation, setSelectedConversation] = useState<WhatsAppConversation | null>(
     mockConversations[0]
   );
-  const [inputMessage, setInputMessage] = useState('');
 
   const conversationMessages = selectedConversation
     ? messages.filter(m => m.clientId === selectedConversation.clientId)
     : [];
 
-  const handleAssumeConversation = () => {
+  // Webhook: Humano assumiu a conversa
+  const handleAssumeConversation = async () => {
     if (!selectedConversation) return;
+
+    await triggerWebhook('humano_assumiu_conversa', {
+      conversationId: selectedConversation.id,
+      clientId: selectedConversation.clientId,
+      clientWhatsapp: selectedConversation.clientWhatsapp,
+      timestamp: new Date().toISOString(),
+    });
 
     setConversations(prev =>
       prev.map(c =>
@@ -45,39 +58,61 @@ const WhatsAppPanel = () => {
     setSelectedConversation({ ...selectedConversation, status: 'humano_ativo' });
 
     toast({
-      title: "👤 Conversa Assumida",
-      description: "Você assumiu o controle desta conversa. A IA está pausada.",
+      title: "👤 Humano Assumiu Conversa",
+      description: "Webhook disparado para o n8n. A IA está pausada para este cliente.",
     });
   };
 
-  const handlePauseAI = () => {
+  // Webhook: Pausar IA
+  const handlePauseAI = async () => {
     if (!selectedConversation) return;
 
-    const newStatus = selectedConversation.status === 'pausada' ? 'ia_ativa' : 'pausada';
+    await triggerWebhook('ia_pausada', {
+      conversationId: selectedConversation.id,
+      clientId: selectedConversation.clientId,
+      clientWhatsapp: selectedConversation.clientWhatsapp,
+      timestamp: new Date().toISOString(),
+    });
 
     setConversations(prev =>
       prev.map(c =>
         c.id === selectedConversation.id
-          ? { ...c, status: newStatus as ConversationStatus }
+          ? { ...c, status: 'pausada' as ConversationStatus }
           : c
       )
     );
-    setSelectedConversation({ ...selectedConversation, status: newStatus });
+    setSelectedConversation({ ...selectedConversation, status: 'pausada' });
 
     toast({
-      title: newStatus === 'pausada' ? "⏸️ IA Pausada" : "▶️ IA Retomada",
-      description: `Webhook disparado para o n8n.`,
+      title: "⏸️ IA Pausada",
+      description: "Webhook disparado para o n8n. A IA não responderá mais este cliente.",
     });
   };
 
-  const handleSendMessage = () => {
-    if (!inputMessage.trim() || !selectedConversation) return;
+  // Webhook: Retomar IA
+  const handleResumeAI = async () => {
+    if (!selectedConversation) return;
+
+    await triggerWebhook('ia_retomada', {
+      conversationId: selectedConversation.id,
+      clientId: selectedConversation.clientId,
+      clientWhatsapp: selectedConversation.clientWhatsapp,
+      timestamp: new Date().toISOString(),
+    });
+
+    setConversations(prev =>
+      prev.map(c =>
+        c.id === selectedConversation.id
+          ? { ...c, status: 'ia_ativa' as ConversationStatus }
+          : c
+      )
+    );
+    setSelectedConversation({ ...selectedConversation, status: 'ia_ativa' });
 
     toast({
-      title: "📤 Mensagem Enviada",
-      description: "Mensagem encaminhada via API do WhatsApp.",
+      title: "▶️ IA Retomada",
+      description: "Webhook disparado para o n8n. A IA voltará a responder este cliente.",
     });
-    setInputMessage('');
   };
 
   return (
@@ -90,14 +125,14 @@ const WhatsAppPanel = () => {
       >
         <h1 className="text-3xl font-display font-bold text-foreground flex items-center gap-3">
           <MessageSquare className="w-8 h-8 text-primary" />
-          Painel WhatsApp
+          Painel de Operação do WhatsApp
         </h1>
         <p className="text-muted-foreground mt-1">
-          Monitore e responda mensagens em tempo real via API externa
+          Monitoramento em tempo real via API externa • Orquestrador de webhooks
         </p>
       </motion.div>
 
-      {/* Important Notice */}
+      {/* Important Architecture Notice */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -106,15 +141,20 @@ const WhatsAppPanel = () => {
       >
         <Card className="border-0 shadow-soft bg-primary/5 border-l-4 border-l-primary">
           <CardContent className="p-4">
-            <p className="text-sm">
-              <strong>⚠️ Importante:</strong> Este painel apenas monitora e responde mensagens via API externa do WhatsApp. 
-              Todas as mensagens são processadas pelo n8n. A IA responde primeiro, você pode assumir a qualquer momento.
-            </p>
+            <div className="flex items-start gap-3">
+              <Activity className="w-5 h-5 text-primary mt-0.5" />
+              <div className="text-sm space-y-1">
+                <p><strong>Arquitetura:</strong> Este painel <strong>NÃO envia mensagens</strong>.</p>
+                <p>• Mensagens recebidas e enviadas vêm da <strong>API externa</strong> (Z-API + n8n)</p>
+                <p>• Botões disparam <strong>webhooks para o n8n</strong> que controla as respostas</p>
+                <p>• IA responde primeiro, humano pode assumir via webhook</p>
+              </div>
+            </div>
           </CardContent>
         </Card>
       </motion.div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100%-180px)]">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100%-220px)]">
         {/* Conversation List */}
         <motion.div
           initial={{ opacity: 0, x: -20 }}
@@ -123,7 +163,12 @@ const WhatsAppPanel = () => {
         >
           <Card className="border-0 shadow-soft h-full">
             <CardHeader className="pb-2">
-              <CardTitle className="text-base">Conversas</CardTitle>
+              <CardTitle className="text-base flex items-center gap-2">
+                Conversas Ativas
+                <Badge variant="secondary" className="ml-auto">
+                  {conversations.length}
+                </Badge>
+              </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
               <ScrollArea className="h-[calc(100%-60px)]">
@@ -182,6 +227,7 @@ const WhatsAppPanel = () => {
                             >
                               {conv.status === 'ia_ativa' && <Bot className="w-3 h-3 mr-1" />}
                               {conv.status === 'humano_ativo' && <User className="w-3 h-3 mr-1" />}
+                              {conv.status === 'pausada' && <Pause className="w-3 h-3 mr-1" />}
                               {status.label}
                             </Badge>
                           </div>
@@ -195,7 +241,7 @@ const WhatsAppPanel = () => {
           </Card>
         </motion.div>
 
-        {/* Chat Area */}
+        {/* Message Monitor (Read-Only) */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -205,7 +251,7 @@ const WhatsAppPanel = () => {
           <Card className="border-0 shadow-soft h-full flex flex-col">
             {selectedConversation ? (
               <>
-                {/* Chat Header */}
+                {/* Header with Controls */}
                 <CardHeader className="border-b">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
@@ -214,46 +260,71 @@ const WhatsAppPanel = () => {
                       </div>
                       <div>
                         <p className="font-semibold">{selectedConversation.clientName}</p>
-                        <p className="text-sm text-muted-foreground">
+                        <p className="text-sm text-muted-foreground flex items-center gap-1">
+                          <Circle className="w-2 h-2 fill-success text-success" />
                           {selectedConversation.clientWhatsapp}
                         </p>
                       </div>
+                      <Badge className={cn("ml-2", statusConfig[selectedConversation.status].bgColor, statusConfig[selectedConversation.status].color)}>
+                        {selectedConversation.status === 'ia_ativa' && <Bot className="w-3 h-3 mr-1" />}
+                        {selectedConversation.status === 'humano_ativo' && <User className="w-3 h-3 mr-1" />}
+                        {selectedConversation.status === 'pausada' && <Pause className="w-3 h-3 mr-1" />}
+                        {statusConfig[selectedConversation.status].label}
+                      </Badge>
                     </div>
+                    
+                    {/* Webhook Control Buttons */}
                     <div className="flex items-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handlePauseAI}
-                        className={cn(
-                          selectedConversation.status === 'pausada' && "border-success text-success"
-                        )}
-                      >
-                        {selectedConversation.status === 'pausada' ? (
-                          <>
-                            <Play className="w-4 h-4 mr-1" />
-                            Retomar IA
-                          </>
-                        ) : (
-                          <>
-                            <Pause className="w-4 h-4 mr-1" />
-                            Pausar IA
-                          </>
-                        )}
-                      </Button>
-                      <Button
-                        size="sm"
-                        onClick={handleAssumeConversation}
-                        disabled={selectedConversation.status === 'humano_ativo'}
-                        className="bg-gradient-secondary hover:opacity-90"
-                      >
-                        <User className="w-4 h-4 mr-1" />
-                        Assumir Conversa
-                      </Button>
+                      {selectedConversation.status === 'ia_ativa' && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handlePauseAI}
+                        >
+                          <Pause className="w-4 h-4 mr-1" />
+                          Pausar IA
+                        </Button>
+                      )}
+                      
+                      {selectedConversation.status === 'pausada' && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleResumeAI}
+                          className="border-success text-success hover:bg-success/10"
+                        >
+                          <Play className="w-4 h-4 mr-1" />
+                          Retomar IA
+                        </Button>
+                      )}
+                      
+                      {selectedConversation.status !== 'humano_ativo' && (
+                        <Button
+                          size="sm"
+                          onClick={handleAssumeConversation}
+                          className="bg-gradient-secondary hover:opacity-90"
+                        >
+                          <UserCheck className="w-4 h-4 mr-1" />
+                          Humano Assumir
+                        </Button>
+                      )}
+                      
+                      {selectedConversation.status === 'humano_ativo' && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleResumeAI}
+                          className="border-primary text-primary hover:bg-primary/10"
+                        >
+                          <Bot className="w-4 h-4 mr-1" />
+                          Devolver para IA
+                        </Button>
+                      )}
                     </div>
                   </div>
                 </CardHeader>
 
-                {/* Messages */}
+                {/* Messages Display (Read-Only Monitor) */}
                 <CardContent className="flex-1 p-4 overflow-auto">
                   <div className="space-y-4">
                     {conversationMessages.map((msg, index) => (
@@ -261,7 +332,7 @@ const WhatsAppPanel = () => {
                         key={msg.id}
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: index * 0.1 }}
+                        transition={{ delay: index * 0.05 }}
                         className={cn(
                           "flex",
                           msg.direction === 'outgoing' ? "justify-end" : "justify-start"
@@ -283,7 +354,7 @@ const WhatsAppPanel = () => {
                             ) : (
                               <User className="w-3 h-3" />
                             )}
-                            <span>{msg.source === 'ia' ? 'IA' : 'Humano'}</span>
+                            <span>{msg.source === 'ia' ? 'IA (n8n)' : 'Humano'}</span>
                             <span>•</span>
                             <span>
                               {new Date(msg.timestamp).toLocaleTimeString('pt-BR', {
@@ -291,6 +362,9 @@ const WhatsAppPanel = () => {
                                 minute: '2-digit'
                               })}
                             </span>
+                            <span>•</span>
+                            <ExternalLink className="w-3 h-3" />
+                            <span>via API</span>
                           </div>
                         </div>
                       </motion.div>
@@ -298,22 +372,11 @@ const WhatsAppPanel = () => {
                   </div>
                 </CardContent>
 
-                {/* Input */}
-                <div className="p-4 border-t">
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder="Digite sua mensagem..."
-                      value={inputMessage}
-                      onChange={(e) => setInputMessage(e.target.value)}
-                      onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-                      className="flex-1"
-                    />
-                    <Button 
-                      onClick={handleSendMessage}
-                      className="bg-gradient-primary hover:opacity-90"
-                    >
-                      <Send className="w-4 h-4" />
-                    </Button>
+                {/* Info Footer - No Input! */}
+                <div className="p-4 border-t bg-muted/30">
+                  <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                    <ExternalLink className="w-4 h-4" />
+                    <span>Respostas são enviadas exclusivamente via <strong>n8n + Z-API</strong></span>
                   </div>
                 </div>
               </>
@@ -321,7 +384,7 @@ const WhatsAppPanel = () => {
               <div className="flex-1 flex items-center justify-center">
                 <div className="text-center text-muted-foreground">
                   <MessageSquare className="w-16 h-16 mx-auto mb-4 opacity-30" />
-                  <p>Selecione uma conversa para visualizar</p>
+                  <p>Selecione uma conversa para monitorar</p>
                 </div>
               </div>
             )}
