@@ -10,7 +10,8 @@ import {
   Upload,
   Dog,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Bell
 } from 'lucide-react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
@@ -24,6 +25,7 @@ const navItems = [
   { title: 'Hotelzinho', url: '/hotelzinho', icon: Home },
   { title: 'Planos', url: '/planos', icon: CreditCard },
   { title: 'Clientes & Pets', url: '/clientes', icon: Users },
+  { title: 'Lembretes', url: '/lembretes', icon: Bell },
   { title: 'Inativos', url: '/inativos', icon: UserX },
   { title: 'Frente de Caixa', url: '/caixa', icon: DollarSign },
   { title: 'WhatsApp', url: '/whatsapp', icon: MessageSquare },
