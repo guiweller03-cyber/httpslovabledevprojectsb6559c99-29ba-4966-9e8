@@ -54,12 +54,13 @@ interface ServiceAddon {
 }
 
 const groomingTypeLabels: Record<string, string> = {
+  banho: 'Apenas Banho',
+  banho_tosa: 'Banho + Tosa',
+  tosa_baby: 'Tosa Baby',
   tosa_higienica: 'Tosa Higiênica',
-  tosa_bebe: 'Tosa Bebê',
-  tosa_padrao_raca: 'Tosa Padrão da Raça',
-  tosa_completa: 'Tosa Completa',
-  tosa_verao: 'Tosa Verão',
-  apenas_banho: 'Apenas Banho',
+  tosa_padrao: 'Tosa Padrão da Raça',
+  tosa_tesoura: 'Tosa Tesoura',
+  tosa_maquina: 'Tosa Máquina',
 };
 
 const sizeLabels: Record<string, string> = {

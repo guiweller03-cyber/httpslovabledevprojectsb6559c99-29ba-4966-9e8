@@ -92,6 +92,73 @@ export type Database = {
         }
         Relationships: []
       }
+      client_plans: {
+        Row: {
+          active: boolean | null
+          client_id: string
+          created_at: string | null
+          expires_at: string
+          id: string
+          pet_id: string
+          plan_id: string
+          price_paid: number
+          purchased_at: string | null
+          total_baths: number
+          updated_at: string | null
+          used_baths: number
+        }
+        Insert: {
+          active?: boolean | null
+          client_id: string
+          created_at?: string | null
+          expires_at: string
+          id?: string
+          pet_id: string
+          plan_id: string
+          price_paid: number
+          purchased_at?: string | null
+          total_baths: number
+          updated_at?: string | null
+          used_baths?: number
+        }
+        Update: {
+          active?: boolean | null
+          client_id?: string
+          created_at?: string | null
+          expires_at?: string
+          id?: string
+          pet_id?: string
+          plan_id?: string
+          price_paid?: number
+          purchased_at?: string | null
+          total_baths?: number
+          updated_at?: string | null
+          used_baths?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_plans_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_plans_pet_id_fkey"
+            columns: ["pet_id"]
+            isOneToOne: false
+            referencedRelation: "pets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_plans_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "bath_plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       clients: {
         Row: {
           created_at: string | null

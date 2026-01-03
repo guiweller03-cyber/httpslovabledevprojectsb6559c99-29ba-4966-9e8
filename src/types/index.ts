@@ -14,7 +14,7 @@ export type FurType = 'curto' | 'medio' | 'longo' | 'muito_peludo';
 export type Species = 'cachorro' | 'gato' | 'outro';
 export type PetSize = 'pequeno' | 'medio' | 'grande';
 export type PreferredService = 'banho' | 'banho_tosa';
-export type GroomingType = 'tosa_higienica' | 'tosa_tesoura' | 'tosa_maquina' | 'tosa_bebe' | 'tosa_padrao_raca' | 'sem_preferencia';
+export type GroomingType = 'banho' | 'banho_tosa' | 'tosa_baby' | 'tosa_higienica' | 'tosa_padrao' | 'tosa_tesoura' | 'tosa_maquina';
 
 // Breed data for auto-suggesting size
 export interface BreedInfo {

@@ -153,7 +153,7 @@ export const mockPets: Pet[] = [
     furType: 'medio',
     weight: 8,
     preferredService: 'banho_tosa',
-    groomingType: 'tosa_bebe',
+    groomingType: 'tosa_baby',
   },
   {
     id: '5',
@@ -165,7 +165,7 @@ export const mockPets: Pet[] = [
     furType: 'medio',
     weight: 35,
     preferredService: 'banho_tosa',
-    groomingType: 'tosa_padrao_raca',
+    groomingType: 'tosa_padrao',
   },
 ];
 

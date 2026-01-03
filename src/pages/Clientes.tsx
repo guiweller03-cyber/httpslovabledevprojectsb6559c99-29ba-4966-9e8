@@ -28,12 +28,13 @@ const sizeLabels: Record<PetSize, string> = {
 };
 
 const groomingTypeLabels: Record<GroomingType, string> = {
+  banho: 'Apenas Banho',
+  banho_tosa: 'Banho + Tosa',
+  tosa_baby: 'Tosa Baby',
   tosa_higienica: 'Tosa Higiênica',
-  tosa_tesoura: 'Tosa na Tesoura',
-  tosa_maquina: 'Tosa na Máquina',
-  tosa_bebe: 'Tosa Bebê',
-  tosa_padrao_raca: 'Tosa Padrão da Raça',
-  sem_preferencia: 'Sem Preferência',
+  tosa_padrao: 'Tosa Padrão da Raça',
+  tosa_tesoura: 'Tosa Tesoura',
+  tosa_maquina: 'Tosa Máquina',
 };
 
 // Webhook trigger function

@@ -74,15 +74,17 @@ const statusColors: Record<AppointmentStatus, string> = {
   cancelado: '#ef4444',
 };
 
-// Tipos de tosa profissionais
+// Tipos de tosa profissionais (PADRÃO OFICIAL DO SISTEMA)
 const GROOMING_TYPES = [
+  { value: 'tosa_baby', label: 'Tosa Baby' },
   { value: 'tosa_higienica', label: 'Tosa Higiênica' },
-  { value: 'tosa_bebe', label: 'Tosa Bebê' },
-  { value: 'tosa_padrao_raca', label: 'Tosa Padrão da Raça' },
-  { value: 'tosa_completa', label: 'Tosa Completa' },
-  { value: 'tosa_verao', label: 'Tosa Verão' },
-  { value: 'apenas_banho', label: 'Apenas Banho (sem tosa)' },
+  { value: 'tosa_padrao', label: 'Tosa Padrão da Raça' },
+  { value: 'tosa_tesoura', label: 'Tosa Tesoura' },
+  { value: 'tosa_maquina', label: 'Tosa Máquina' },
 ];
+
+// Valores válidos de grooming_type aceitos pelo sistema
+const VALID_GROOMING_VALUES = ['banho', 'banho_tosa', 'tosa_baby', 'tosa_higienica', 'tosa_padrao', 'tosa_tesoura', 'tosa_maquina'];
 
 // Tipos de pelo
 const COAT_TYPES = [
@@ -415,10 +417,34 @@ const BanhoTosa = () => {
   };
 
   const handleSaveAppointment = async () => {
-    if (!formData.clientId || !formData.petId || !formData.service || !formData.datetime || !formData.groomingType) {
+    // Validação básica
+    if (!formData.clientId || !formData.petId || !formData.service || !formData.datetime) {
       toast({
         title: "Campos obrigatórios",
-        description: "Preencha todos os campos obrigatórios, incluindo o Tipo de Tosa.",
+        description: "Preencha todos os campos obrigatórios.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Define grooming_type baseado no serviço
+    const groomingTypeToSave = formData.service === 'banho' ? 'banho' : formData.groomingType;
+
+    // Se for banho_tosa, precisa ter tipo de tosa selecionado
+    if (formData.service === 'banho_tosa' && !formData.groomingType) {
+      toast({
+        title: "Tipo de Tosa obrigatório",
+        description: "Selecione o tipo de tosa para o serviço Banho + Tosa.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Validação contra lista oficial
+    if (!VALID_GROOMING_VALUES.includes(groomingTypeToSave)) {
+      toast({
+        title: "Valor inválido",
+        description: "O tipo de tosa selecionado não é válido.",
         variant: "destructive",
       });
       return;
@@ -435,7 +461,7 @@ const BanhoTosa = () => {
         client_id: formData.clientId,
         pet_id: formData.petId,
         service_type: formData.service,
-        grooming_type: formData.groomingType,
+        grooming_type: groomingTypeToSave,
         start_datetime: startDate.toISOString(),
         end_datetime: endDate.toISOString(),
         status: 'agendado',
@@ -571,38 +597,44 @@ const BanhoTosa = () => {
                   <Label>Serviço *</Label>
                   <Select 
                     value={formData.service}
-                    onValueChange={(value) => setFormData(prev => ({ ...prev, service: value, groomingType: value === 'banho' ? 'apenas_banho' : '' }))}
+                    onValueChange={(value) => setFormData(prev => ({ 
+                      ...prev, 
+                      service: value, 
+                      // Se for apenas banho, define grooming_type como 'banho'. Se for banho_tosa, limpa para selecionar
+                      groomingType: value === 'banho' ? 'banho' : '' 
+                    }))}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Tipo de serviço" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="banho">Banho</SelectItem>
+                      <SelectItem value="banho">Apenas Banho</SelectItem>
                       <SelectItem value="banho_tosa">Banho + Tosa</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
-                {/* Tipo de Tosa - obrigatório */}
-                <div>
-                  <Label>Tipo de Tosa *</Label>
-                  <Select 
-                    value={formData.groomingType}
-                    onValueChange={(value) => setFormData(prev => ({ ...prev, groomingType: value }))}
-                    disabled={formData.service === 'banho'}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione o tipo de tosa" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {GROOMING_TYPES.map(type => (
-                        <SelectItem key={type.value} value={type.value}>
-                          {type.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                {/* Tipo de Tosa - somente se for banho_tosa */}
+                {formData.service === 'banho_tosa' && (
+                  <div>
+                    <Label>Tipo de Tosa *</Label>
+                    <Select 
+                      value={formData.groomingType}
+                      onValueChange={(value) => setFormData(prev => ({ ...prev, groomingType: value }))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione o tipo de tosa" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {GROOMING_TYPES.map(type => (
+                          <SelectItem key={type.value} value={type.value}>
+                            {type.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
 
                 {/* Porte e Tipo de Pelo */}
                 <div className="grid grid-cols-2 gap-4">
@@ -839,7 +871,9 @@ const BanhoTosa = () => {
                 <div>
                   <p className="text-sm text-muted-foreground">Tipo de Tosa</p>
                   <p className="font-semibold">
-                    {GROOMING_TYPES.find(g => g.value === selectedAppointment.grooming_type)?.label || 'Apenas Banho'}
+                    {selectedAppointment.grooming_type === 'banho' 
+                      ? 'Apenas Banho' 
+                      : (GROOMING_TYPES.find(g => g.value === selectedAppointment.grooming_type)?.label || selectedAppointment.grooming_type || 'N/A')}
                   </p>
                 </div>
                 <div>
