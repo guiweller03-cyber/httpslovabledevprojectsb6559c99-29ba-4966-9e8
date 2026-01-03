@@ -144,6 +144,7 @@ export default function ServicosDoDia() {
   };
 
   const handleMarkFinished = async (appointment: Appointment) => {
+    // 1. Atualizar status para finalizado
     const { error } = await supabase
       .from('bath_grooming_appointments')
       .update({ status: 'finalizado' })
@@ -158,13 +159,47 @@ export default function ServicosDoDia() {
       return;
     }
 
+    // 2. Verificar se o pet tem plano ativo e descontar crédito
+    let planDeducted = false;
+    const { data: activePlan } = await supabase
+      .from('client_plans')
+      .select('*')
+      .eq('pet_id', appointment.pet_id)
+      .eq('active', true)
+      .gt('expires_at', new Date().toISOString())
+      .gt('total_baths', 0)
+      .order('expires_at', { ascending: true })
+      .limit(1)
+      .single();
+
+    if (activePlan && activePlan.used_baths < activePlan.total_baths) {
+      const newUsedBaths = activePlan.used_baths + 1;
+      const remainingBaths = activePlan.total_baths - newUsedBaths;
+      
+      const { error: planError } = await supabase
+        .from('client_plans')
+        .update({ 
+          used_baths: newUsedBaths,
+          active: remainingBaths > 0 // Desativa se acabaram os créditos
+        })
+        .eq('id', activePlan.id);
+
+      if (!planError) {
+        planDeducted = true;
+      }
+    }
+
     setAppointments(prev => 
       prev.map(apt => apt.id === appointment.id ? { ...apt, status: 'finalizado' } : apt)
     );
 
+    const pet = getPet(appointment.pet_id);
+    
     toast({
       title: "✅ Serviço Finalizado!",
-      description: "Status atualizado com sucesso.",
+      description: planDeducted 
+        ? `Crédito descontado do plano de ${pet?.name}.`
+        : "Status atualizado com sucesso.",
     });
   };
 
