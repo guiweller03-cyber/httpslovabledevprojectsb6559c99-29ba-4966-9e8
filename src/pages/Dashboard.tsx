@@ -1,16 +1,23 @@
+import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Scissors, Home, Calendar, DollarSign, Loader2 } from 'lucide-react';
-import { useDashboardData } from '@/hooks/useDashboardData';
-import { OperationalCard } from '@/components/dashboard/OperationalCard';
-import { RevenueCard } from '@/components/dashboard/RevenueCard';
-import { TodaySchedule } from '@/components/dashboard/TodaySchedule';
-import { StatCard } from '@/components/dashboard/StatCard';
-import { ScheduledReservations } from '@/components/dashboard/ScheduledReservations';
+import { Loader2 } from 'lucide-react';
+import { useDashboardData, ServiceFilter } from '@/hooks/useDashboardData';
+import { DashboardFilter } from '@/components/dashboard/DashboardFilter';
+import { MonthlyStatsCard } from '@/components/dashboard/MonthlyStatsCard';
+import { RevenueCards } from '@/components/dashboard/RevenueCards';
+import { TodayReservations } from '@/components/dashboard/TodayReservations';
+
+const filterLabels: Record<ServiceFilter, string> = {
+  all: 'Todos os Serviços',
+  grooming: 'Banho & Tosa',
+  hotel: 'Hotelzinho',
+};
 
 const Dashboard = () => {
-  const data = useDashboardData();
+  const [filter, setFilter] = useState<ServiceFilter>('all');
+  const { monthlyStats, forecastRevenue, completedRevenue, todayReservations, isLoading, refetch } = useDashboardData(filter);
 
-  if (data.isLoading) {
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full p-8">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
@@ -19,99 +26,49 @@ const Dashboard = () => {
   }
 
   return (
-    <div className="p-8 space-y-6">
-      {/* Header */}
+    <div className="p-6 lg:p-8 space-y-6 max-w-7xl mx-auto">
+      {/* Header with Filter */}
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="mb-2"
+        className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
       >
-        <h1 className="text-3xl font-display font-bold text-foreground">
-          Dashboard
-        </h1>
-        <p className="text-muted-foreground mt-1">
-          Visão geral da operação em tempo real
-        </p>
+        <div>
+          <h1 className="text-3xl font-display font-bold text-foreground">
+            Dashboard
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            Visão geral da operação em tempo real
+          </p>
+        </div>
+        
+        <DashboardFilter filter={filter} onChange={setFilter} />
       </motion.div>
 
-      {/* Quick Stats - Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard
-          title="Banhos Agendados"
-          value={data.groomingScheduled + data.groomingInProgress}
-          icon={Calendar}
-          variant="primary"
-        />
-        <StatCard
-          title="Em Atendimento"
-          value={data.groomingInProgress}
-          icon={Scissors}
-          variant="warning"
-        />
-        <StatCard
-          title="Finalizados Hoje"
-          value={data.groomingCompleted}
-          icon={Scissors}
-          variant="success"
-        />
-        <StatCard
-          title="Pets Hospedados"
-          value={data.hotelCurrentGuests}
-          icon={Home}
-          variant="secondary"
-        />
-      </div>
-
-      {/* Financial Summary */}
-      <RevenueCard
-        completedRevenue={data.totalCompletedRevenue}
-        forecastRevenue={data.totalForecastRevenue}
-        title="Faturamento do Dia"
+      {/* Revenue Cards */}
+      <RevenueCards
+        forecastRevenue={forecastRevenue}
+        completedRevenue={completedRevenue}
+        filterLabel={filterLabels[filter]}
       />
 
-      {/* Operational Status */}
+      {/* Monthly Stats */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <OperationalCard
-          title="Banho & Tosa"
-          icon={Scissors}
-          variant="default"
-          items={[
-            { icon: '📅', label: 'Agendados', value: data.groomingScheduled },
-            { icon: '🔄', label: 'Em Atendimento', value: data.groomingInProgress, highlight: true },
-            { icon: '✅', label: 'Finalizados', value: data.groomingCompleted },
-            { icon: '📊', label: 'Total do Dia', value: data.groomingTotal },
-            { 
-              icon: '💰', 
-              label: 'Faturamento Previsto', 
-              value: `R$ ${data.groomingForecastRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
-              highlight: true 
-            },
-          ]}
+        <MonthlyStatsCard
+          title={filter === 'all' ? 'Total de Serviços do Mês' : filterLabels[filter]}
+          scheduled={monthlyStats.scheduled}
+          inProgress={monthlyStats.inProgress}
+          completed={monthlyStats.completed}
+          cancelled={monthlyStats.cancelled}
+          total={monthlyStats.total}
         />
 
-        <OperationalCard
-          title="Hotelzinho"
-          icon={Home}
-          variant="default"
-          items={[
-            { icon: '🏨', label: 'Hospedados Agora', value: data.hotelCurrentGuests, highlight: true },
-            { icon: '📆', label: 'Check-ins Futuros', value: data.hotelFutureCheckIns },
-            { icon: '🚪', label: 'Check-outs Previstos', value: data.hotelTodayCheckOuts },
-            { 
-              icon: '💰', 
-              label: 'Faturamento Previsto', 
-              value: `R$ ${data.hotelForecastRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
-              highlight: true 
-            },
-          ]}
+        {/* Today's Reservations */}
+        <TodayReservations
+          reservations={todayReservations}
+          onUpdate={refetch}
         />
       </div>
-
-      {/* Scheduled Reservations */}
-      <ScheduledReservations />
-
-      {/* Today's Schedule */}
-      <TodaySchedule appointments={data.todayAppointments} />
     </div>
   );
 };
