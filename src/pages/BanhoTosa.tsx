@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
@@ -6,15 +6,46 @@ import interactionPlugin from '@fullcalendar/interaction';
 import { motion } from 'framer-motion';
 import { Plus, Scissors, CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Card, CardContent } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { mockGroomingAppointments, mockPets, mockClients } from '@/data/mockData';
-import { GroomingAppointment, AppointmentStatus } from '@/types';
+import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
+
+type AppointmentStatus = 'agendado' | 'em_atendimento' | 'pronto' | 'finalizado';
+
+interface ClientDB {
+  id: string;
+  name: string;
+  whatsapp: string;
+  email: string | null;
+}
+
+interface PetDB {
+  id: string;
+  client_id: string;
+  name: string;
+  species: string;
+  breed: string | null;
+  size: string | null;
+  coat_type: string | null;
+}
+
+interface AppointmentDB {
+  id: string;
+  client_id: string;
+  pet_id: string;
+  service_type: string;
+  grooming_type: string | null;
+  start_datetime: string;
+  end_datetime: string;
+  price: number | null;
+  status: string | null;
+  notes: string | null;
+}
 
 const statusColors: Record<AppointmentStatus, string> = {
   agendado: '#3b82f6',
@@ -26,21 +57,100 @@ const statusColors: Record<AppointmentStatus, string> = {
 const BanhoTosa = () => {
   const { toast } = useToast();
   const calendarRef = useRef<FullCalendar>(null);
-  const [appointments, setAppointments] = useState<GroomingAppointment[]>(mockGroomingAppointments);
-  const [selectedAppointment, setSelectedAppointment] = useState<GroomingAppointment | null>(null);
+  
+  // State from database
+  const [clients, setClients] = useState<ClientDB[]>([]);
+  const [pets, setPets] = useState<PetDB[]>([]);
+  const [filteredPets, setFilteredPets] = useState<PetDB[]>([]);
+  const [appointments, setAppointments] = useState<AppointmentDB[]>([]);
+  
+  const [selectedAppointment, setSelectedAppointment] = useState<AppointmentDB | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isNewDialogOpen, setIsNewDialogOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  
+  // Form state
+  const [formData, setFormData] = useState({
+    clientId: '',
+    petId: '',
+    service: '',
+    datetime: '',
+  });
+
+  // Fetch data from Supabase
+  const fetchClients = async () => {
+    console.log("Fetching clients...");
+    const { data, error } = await supabase
+      .from('clients')
+      .select('*')
+      .order('name', { ascending: true });
+    
+    if (error) {
+      console.error('Erro ao carregar clientes:', error);
+      return;
+    }
+    console.log("Clients loaded:", data);
+    setClients(data || []);
+  };
+
+  const fetchPets = async () => {
+    console.log("Fetching pets...");
+    const { data, error } = await supabase
+      .from('pets')
+      .select('*')
+      .order('name', { ascending: true });
+    
+    if (error) {
+      console.error('Erro ao carregar pets:', error);
+      return;
+    }
+    console.log("Pets loaded:", data);
+    setPets(data || []);
+  };
+
+  const fetchAppointments = async () => {
+    console.log("Fetching appointments...");
+    const { data, error } = await supabase
+      .from('bath_grooming_appointments')
+      .select('*')
+      .order('start_datetime', { ascending: true });
+    
+    if (error) {
+      console.error('Erro ao carregar agendamentos:', error);
+      return;
+    }
+    console.log("Appointments loaded:", data);
+    setAppointments(data || []);
+  };
+
+  useEffect(() => {
+    fetchClients();
+    fetchPets();
+    fetchAppointments();
+  }, []);
+
+  // Filter pets when client changes
+  useEffect(() => {
+    if (formData.clientId) {
+      const clientPets = pets.filter(p => p.client_id === formData.clientId);
+      setFilteredPets(clientPets);
+      setFormData(prev => ({ ...prev, petId: '' }));
+    } else {
+      setFilteredPets([]);
+    }
+  }, [formData.clientId, pets]);
 
   const events = appointments.map(apt => {
-    const pet = mockPets.find(p => p.id === apt.petId);
-    const client = mockClients.find(c => c.id === apt.clientId);
+    const pet = pets.find(p => p.id === apt.pet_id);
+    const client = clients.find(c => c.id === apt.client_id);
     
     return {
       id: apt.id,
-      title: `${pet?.name} - ${apt.service === 'banho' ? 'Banho' : 'Banho + Tosa'}`,
-      start: apt.scheduledAt,
-      backgroundColor: statusColors[apt.status],
-      borderColor: statusColors[apt.status],
+      title: `${pet?.name || 'Pet'} - ${apt.service_type === 'banho' ? 'Banho' : 'Banho + Tosa'}`,
+      start: apt.start_datetime,
+      end: apt.end_datetime,
+      backgroundColor: statusColors[(apt.status as AppointmentStatus) || 'agendado'],
+      borderColor: statusColors[(apt.status as AppointmentStatus) || 'agendado'],
       extendedProps: {
         ...apt,
         petName: pet?.name,
@@ -57,8 +167,23 @@ const BanhoTosa = () => {
     }
   };
 
-  const handleStatusChange = (status: AppointmentStatus) => {
+  const handleStatusChange = async (status: AppointmentStatus) => {
     if (!selectedAppointment) return;
+
+    const { error } = await supabase
+      .from('bath_grooming_appointments')
+      .update({ status })
+      .eq('id', selectedAppointment.id);
+
+    if (error) {
+      console.error('Erro ao atualizar status:', error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível atualizar o status.",
+        variant: "destructive",
+      });
+      return;
+    }
 
     setAppointments(prev => 
       prev.map(apt => 
@@ -69,7 +194,7 @@ const BanhoTosa = () => {
     if (status === 'pronto') {
       toast({
         title: "🎉 Pet Pronto!",
-        description: "Webhook disparado para o n8n. WhatsApp será enviado ao cliente.",
+        description: "Status atualizado. Cliente pode ser notificado.",
       });
     }
 
@@ -81,8 +206,62 @@ const BanhoTosa = () => {
     setIsDialogOpen(false);
   };
 
-  const getPet = (petId: string) => mockPets.find(p => p.id === petId);
-  const getClient = (clientId: string) => mockClients.find(c => c.id === clientId);
+  const handleSaveAppointment = async () => {
+    console.log("CLICK OK - handleSaveAppointment");
+    console.log("DADOS FORM", formData);
+
+    if (!formData.clientId || !formData.petId || !formData.service || !formData.datetime) {
+      toast({
+        title: "Campos obrigatórios",
+        description: "Preencha todos os campos.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsLoading(true);
+
+    const startDate = new Date(formData.datetime);
+    const endDate = new Date(startDate.getTime() + 60 * 60 * 1000); // +1 hour
+
+    const { data, error } = await supabase
+      .from('bath_grooming_appointments')
+      .insert({
+        client_id: formData.clientId,
+        pet_id: formData.petId,
+        service_type: formData.service,
+        start_datetime: startDate.toISOString(),
+        end_datetime: endDate.toISOString(),
+        status: 'agendado',
+      })
+      .select();
+
+    console.log("RESULTADO INSERT APPOINTMENT", data, error);
+
+    setIsLoading(false);
+
+    if (error) {
+      console.error('Erro ao salvar agendamento:', error);
+      toast({
+        title: "Erro ao agendar",
+        description: error.message || "Não foi possível salvar o agendamento.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    toast({
+      title: "Agendamento criado!",
+      description: "O agendamento foi salvo com sucesso.",
+    });
+
+    setFormData({ clientId: '', petId: '', service: '', datetime: '' });
+    setIsNewDialogOpen(false);
+    fetchAppointments();
+  };
+
+  const getPet = (petId: string) => pets.find(p => p.id === petId);
+  const getClient = (clientId: string) => clients.find(c => c.id === clientId);
 
   return (
     <div className="p-8">
@@ -112,16 +291,22 @@ const BanhoTosa = () => {
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>Novo Agendamento</DialogTitle>
+                <DialogDescription>
+                  Preencha os dados para criar um novo agendamento de banho ou tosa.
+                </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
                 <div>
-                  <Label>Cliente</Label>
-                  <Select>
+                  <Label>Cliente *</Label>
+                  <Select 
+                    value={formData.clientId}
+                    onValueChange={(value) => setFormData(prev => ({ ...prev, clientId: value }))}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione o cliente" />
                     </SelectTrigger>
                     <SelectContent>
-                      {mockClients.map(client => (
+                      {clients.map(client => (
                         <SelectItem key={client.id} value={client.id}>
                           {client.name}
                         </SelectItem>
@@ -130,23 +315,36 @@ const BanhoTosa = () => {
                   </Select>
                 </div>
                 <div>
-                  <Label>Pet</Label>
-                  <Select>
+                  <Label>Pet *</Label>
+                  <Select 
+                    value={formData.petId}
+                    onValueChange={(value) => setFormData(prev => ({ ...prev, petId: value }))}
+                    disabled={!formData.clientId || filteredPets.length === 0}
+                  >
                     <SelectTrigger>
-                      <SelectValue placeholder="Selecione o pet" />
+                      <SelectValue placeholder={
+                        !formData.clientId 
+                          ? "Selecione um cliente primeiro" 
+                          : filteredPets.length === 0 
+                            ? "Nenhum pet cadastrado" 
+                            : "Selecione o pet"
+                      } />
                     </SelectTrigger>
                     <SelectContent>
-                      {mockPets.map(pet => (
+                      {filteredPets.map(pet => (
                         <SelectItem key={pet.id} value={pet.id}>
-                          {pet.name} ({pet.breed})
+                          {pet.name} ({pet.breed || pet.species})
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
                 <div>
-                  <Label>Serviço</Label>
-                  <Select>
+                  <Label>Serviço *</Label>
+                  <Select 
+                    value={formData.service}
+                    onValueChange={(value) => setFormData(prev => ({ ...prev, service: value }))}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Tipo de serviço" />
                     </SelectTrigger>
@@ -157,11 +355,19 @@ const BanhoTosa = () => {
                   </Select>
                 </div>
                 <div>
-                  <Label>Data e Hora</Label>
-                  <Input type="datetime-local" />
+                  <Label>Data e Hora *</Label>
+                  <Input 
+                    type="datetime-local" 
+                    value={formData.datetime}
+                    onChange={(e) => setFormData(prev => ({ ...prev, datetime: e.target.value }))}
+                  />
                 </div>
-                <Button className="w-full bg-gradient-primary hover:opacity-90">
-                  Agendar
+                <Button 
+                  className="w-full bg-gradient-primary hover:opacity-90"
+                  onClick={handleSaveAppointment}
+                  disabled={isLoading}
+                >
+                  {isLoading ? 'Salvando...' : 'Agendar'}
                 </Button>
               </div>
             </DialogContent>
@@ -242,48 +448,41 @@ const BanhoTosa = () => {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Detalhes do Atendimento</DialogTitle>
+            <DialogDescription>
+              Visualize e gerencie os detalhes deste agendamento.
+            </DialogDescription>
           </DialogHeader>
           {selectedAppointment && (
             <div className="space-y-4 py-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm text-muted-foreground">Pet</p>
-                  <p className="font-semibold">{getPet(selectedAppointment.petId)?.name}</p>
+                  <p className="font-semibold">{getPet(selectedAppointment.pet_id)?.name}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Cliente</p>
-                  <p className="font-semibold">{getClient(selectedAppointment.clientId)?.name}</p>
+                  <p className="font-semibold">{getClient(selectedAppointment.client_id)?.name}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Raça</p>
-                  <p className="font-semibold">{getPet(selectedAppointment.petId)?.breed}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Peso</p>
-                  <p className="font-semibold">{getPet(selectedAppointment.petId)?.weight} kg</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Tipo de Pelo</p>
-                  <p className="font-semibold capitalize">
-                    {getPet(selectedAppointment.petId)?.furType.replace('_', ' ')}
-                  </p>
+                  <p className="font-semibold">{getPet(selectedAppointment.pet_id)?.breed || 'N/A'}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Serviço</p>
                   <p className="font-semibold capitalize">
-                    {selectedAppointment.service.replace('_', ' + ')}
+                    {selectedAppointment.service_type?.replace('_', ' + ')}
                   </p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Valor</p>
                   <p className="font-semibold text-primary">
-                    R$ {selectedAppointment.price.toFixed(2)}
+                    {selectedAppointment.price ? `R$ ${selectedAppointment.price.toFixed(2)}` : 'A definir'}
                   </p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Status</p>
                   <Select 
-                    value={selectedAppointment.status}
+                    value={selectedAppointment.status || 'agendado'}
                     onValueChange={(value) => handleStatusChange(value as AppointmentStatus)}
                   >
                     <SelectTrigger className="w-full">
