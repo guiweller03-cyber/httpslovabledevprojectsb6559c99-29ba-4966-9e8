@@ -559,7 +559,7 @@ const FrenteCaixa = () => {
             payment_status: paymentStatus,
             payment_method: item.coveredByPlan ? null : selectedPayment,
             paid_at: now,
-          })
+          } as any)
           .eq('id', item.sourceId);
 
         if (aptError) {
@@ -599,7 +599,7 @@ const FrenteCaixa = () => {
             payment_status: 'pago',
             payment_method: selectedPayment,
             paid_at: now,
-          })
+          } as any)
           .eq('id', item.sourceId);
 
         if (hotelError) {
@@ -666,11 +666,33 @@ const FrenteCaixa = () => {
 
   // Quick pay a single pending item
   const handleQuickPay = async (item: PendingPaymentItem) => {
+    // VALIDATE: Check if sourceId exists
+    if (!item.sourceId) {
+      toast({
+        title: "Erro: Registro não encontrado",
+        description: "Registro financeiro não encontrado para este serviço. Finalize o serviço novamente.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsLoading(true);
     try {
       const now = new Date().toISOString();
 
       if (item.type === 'banho_tosa') {
+        // First verify the record exists
+        const { data: existing, error: checkError } = await supabase
+          .from('bath_grooming_appointments')
+          .select('id, status')
+          .eq('id', item.sourceId)
+          .maybeSingle();
+
+        if (checkError || !existing) {
+          console.error('Record not found:', checkError);
+          throw new Error('Registro financeiro não encontrado para este serviço.');
+        }
+
         const { error } = await supabase
           .from('bath_grooming_appointments')
           .update({ 
@@ -678,7 +700,7 @@ const FrenteCaixa = () => {
             payment_status: 'pago',
             payment_method: selectedPayment,
             paid_at: now,
-          })
+          } as any)
           .eq('id', item.sourceId);
 
         if (error) {
@@ -686,6 +708,18 @@ const FrenteCaixa = () => {
           throw error;
         }
       } else {
+        // First verify the record exists
+        const { data: existing, error: checkError } = await supabase
+          .from('hotel_stays')
+          .select('id, status')
+          .eq('id', item.sourceId)
+          .maybeSingle();
+
+        if (checkError || !existing) {
+          console.error('Record not found:', checkError);
+          throw new Error('Registro financeiro não encontrado para este serviço.');
+        }
+
         const { error } = await supabase
           .from('hotel_stays')
           .update({ 
@@ -693,7 +727,7 @@ const FrenteCaixa = () => {
             payment_status: 'pago',
             payment_method: selectedPayment,
             paid_at: now,
-          })
+          } as any)
           .eq('id', item.sourceId);
 
         if (error) {
@@ -729,11 +763,11 @@ const FrenteCaixa = () => {
         fetchAppointments(),
         fetchHotelStays(),
       ]);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Quick pay error:', error);
       toast({
-        title: "Erro",
-        description: "Não foi possível registrar o pagamento.",
+        title: "Erro ao registrar pagamento",
+        description: error?.message || "Registro financeiro não encontrado para este serviço. Finalize o serviço novamente.",
         variant: "destructive",
       });
     } finally {
