@@ -1,17 +1,46 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import { motion } from 'framer-motion';
-import { Plus, Home, Calendar } from 'lucide-react';
+import { Plus, Home } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { mockHotelBookings, mockPets, mockClients } from '@/data/mockData';
-import { HotelBooking, HotelStatus } from '@/types';
+import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
+
+type HotelStatus = 'reservado' | 'check_in' | 'hospedado' | 'check_out';
+
+interface ClientDB {
+  id: string;
+  name: string;
+  whatsapp: string;
+  email: string | null;
+}
+
+interface PetDB {
+  id: string;
+  client_id: string;
+  name: string;
+  species: string;
+  breed: string | null;
+}
+
+interface HotelStayDB {
+  id: string;
+  client_id: string;
+  pet_id: string;
+  check_in: string;
+  check_out: string;
+  daily_rate: number;
+  total_price: number | null;
+  status: string | null;
+  notes: string | null;
+}
 
 const statusColors: Record<HotelStatus, string> = {
   reservado: '#3b82f6',
@@ -21,23 +50,103 @@ const statusColors: Record<HotelStatus, string> = {
 };
 
 const Hotelzinho = () => {
+  const { toast } = useToast();
   const calendarRef = useRef<FullCalendar>(null);
-  const [bookings, setBookings] = useState<HotelBooking[]>(mockHotelBookings);
-  const [selectedBooking, setSelectedBooking] = useState<HotelBooking | null>(null);
+  
+  // State from database
+  const [clients, setClients] = useState<ClientDB[]>([]);
+  const [pets, setPets] = useState<PetDB[]>([]);
+  const [filteredPets, setFilteredPets] = useState<PetDB[]>([]);
+  const [bookings, setBookings] = useState<HotelStayDB[]>([]);
+  
+  const [selectedBooking, setSelectedBooking] = useState<HotelStayDB | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isNewDialogOpen, setIsNewDialogOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Form state
+  const [formData, setFormData] = useState({
+    clientId: '',
+    petId: '',
+    checkIn: '',
+    checkOut: '',
+    dailyRate: '',
+  });
+
+  // Fetch data from Supabase
+  const fetchClients = async () => {
+    console.log("Fetching clients...");
+    const { data, error } = await supabase
+      .from('clients')
+      .select('*')
+      .order('name', { ascending: true });
+    
+    if (error) {
+      console.error('Erro ao carregar clientes:', error);
+      return;
+    }
+    console.log("Clients loaded:", data);
+    setClients(data || []);
+  };
+
+  const fetchPets = async () => {
+    console.log("Fetching pets...");
+    const { data, error } = await supabase
+      .from('pets')
+      .select('*')
+      .order('name', { ascending: true });
+    
+    if (error) {
+      console.error('Erro ao carregar pets:', error);
+      return;
+    }
+    console.log("Pets loaded:", data);
+    setPets(data || []);
+  };
+
+  const fetchBookings = async () => {
+    console.log("Fetching hotel bookings...");
+    const { data, error } = await supabase
+      .from('hotel_stays')
+      .select('*')
+      .order('check_in', { ascending: true });
+    
+    if (error) {
+      console.error('Erro ao carregar reservas:', error);
+      return;
+    }
+    console.log("Bookings loaded:", data);
+    setBookings(data || []);
+  };
+
+  useEffect(() => {
+    fetchClients();
+    fetchPets();
+    fetchBookings();
+  }, []);
+
+  // Filter pets when client changes
+  useEffect(() => {
+    if (formData.clientId) {
+      const clientPets = pets.filter(p => p.client_id === formData.clientId);
+      setFilteredPets(clientPets);
+      setFormData(prev => ({ ...prev, petId: '' }));
+    } else {
+      setFilteredPets([]);
+    }
+  }, [formData.clientId, pets]);
 
   const events = bookings.map(booking => {
-    const pet = mockPets.find(p => p.id === booking.petId);
-    const client = mockClients.find(c => c.id === booking.clientId);
+    const pet = pets.find(p => p.id === booking.pet_id);
+    const client = clients.find(c => c.id === booking.client_id);
     
     return {
       id: booking.id,
-      title: `🐕 ${pet?.name} (${client?.name})`,
-      start: booking.checkIn,
-      end: booking.checkOut,
-      backgroundColor: statusColors[booking.status],
-      borderColor: statusColors[booking.status],
+      title: `🐕 ${pet?.name || 'Pet'} (${client?.name || 'Cliente'})`,
+      start: booking.check_in,
+      end: booking.check_out,
+      backgroundColor: statusColors[(booking.status as HotelStatus) || 'reservado'],
+      borderColor: statusColors[(booking.status as HotelStatus) || 'reservado'],
       extendedProps: booking,
     };
   });
@@ -50,8 +159,98 @@ const Hotelzinho = () => {
     }
   };
 
-  const getPet = (petId: string) => mockPets.find(p => p.id === petId);
-  const getClient = (clientId: string) => mockClients.find(c => c.id === clientId);
+  const handleStatusChange = async (status: HotelStatus) => {
+    if (!selectedBooking) return;
+
+    const { error } = await supabase
+      .from('hotel_stays')
+      .update({ status })
+      .eq('id', selectedBooking.id);
+
+    if (error) {
+      console.error('Erro ao atualizar status:', error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível atualizar o status.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setBookings(prev => 
+      prev.map(b => 
+        b.id === selectedBooking.id ? { ...b, status } : b
+      )
+    );
+
+    toast({
+      title: "Status atualizado!",
+      description: `Reserva atualizada para ${status.replace('_', '-')}.`,
+    });
+
+    setSelectedBooking({ ...selectedBooking, status });
+  };
+
+  const handleSaveBooking = async () => {
+    console.log("CLICK OK - handleSaveBooking");
+    console.log("DADOS FORM", formData);
+
+    if (!formData.clientId || !formData.petId || !formData.checkIn || !formData.checkOut || !formData.dailyRate) {
+      toast({
+        title: "Campos obrigatórios",
+        description: "Preencha todos os campos.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsLoading(true);
+
+    const checkInDate = new Date(formData.checkIn);
+    const checkOutDate = new Date(formData.checkOut);
+    const days = Math.ceil((checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24));
+    const dailyRate = parseFloat(formData.dailyRate);
+    const totalPrice = days * dailyRate;
+
+    const { data, error } = await supabase
+      .from('hotel_stays')
+      .insert({
+        client_id: formData.clientId,
+        pet_id: formData.petId,
+        check_in: checkInDate.toISOString(),
+        check_out: checkOutDate.toISOString(),
+        daily_rate: dailyRate,
+        total_price: totalPrice,
+        status: 'reservado',
+      })
+      .select();
+
+    console.log("RESULTADO INSERT BOOKING", data, error);
+
+    setIsLoading(false);
+
+    if (error) {
+      console.error('Erro ao salvar reserva:', error);
+      toast({
+        title: "Erro ao reservar",
+        description: error.message || "Não foi possível salvar a reserva.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    toast({
+      title: "Reserva criada!",
+      description: `Reserva de ${days} dia(s) criada com sucesso.`,
+    });
+
+    setFormData({ clientId: '', petId: '', checkIn: '', checkOut: '', dailyRate: '' });
+    setIsNewDialogOpen(false);
+    fetchBookings();
+  };
+
+  const getPet = (petId: string) => pets.find(p => p.id === petId);
+  const getClient = (clientId: string) => clients.find(c => c.id === clientId);
 
   const activeGuests = bookings.filter(b => b.status === 'hospedado');
 
@@ -83,16 +282,22 @@ const Hotelzinho = () => {
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>Nova Reserva</DialogTitle>
+                <DialogDescription>
+                  Preencha os dados para criar uma nova reserva de hospedagem.
+                </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
                 <div>
-                  <Label>Cliente</Label>
-                  <Select>
+                  <Label>Cliente *</Label>
+                  <Select 
+                    value={formData.clientId}
+                    onValueChange={(value) => setFormData(prev => ({ ...prev, clientId: value }))}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione o cliente" />
                     </SelectTrigger>
                     <SelectContent>
-                      {mockClients.map(client => (
+                      {clients.map(client => (
                         <SelectItem key={client.id} value={client.id}>
                           {client.name}
                         </SelectItem>
@@ -101,15 +306,25 @@ const Hotelzinho = () => {
                   </Select>
                 </div>
                 <div>
-                  <Label>Pet</Label>
-                  <Select>
+                  <Label>Pet *</Label>
+                  <Select 
+                    value={formData.petId}
+                    onValueChange={(value) => setFormData(prev => ({ ...prev, petId: value }))}
+                    disabled={!formData.clientId || filteredPets.length === 0}
+                  >
                     <SelectTrigger>
-                      <SelectValue placeholder="Selecione o pet" />
+                      <SelectValue placeholder={
+                        !formData.clientId 
+                          ? "Selecione um cliente primeiro" 
+                          : filteredPets.length === 0 
+                            ? "Nenhum pet cadastrado" 
+                            : "Selecione o pet"
+                      } />
                     </SelectTrigger>
                     <SelectContent>
-                      {mockPets.map(pet => (
+                      {filteredPets.map(pet => (
                         <SelectItem key={pet.id} value={pet.id}>
-                          {pet.name} ({pet.breed})
+                          {pet.name} ({pet.breed || pet.species})
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -117,20 +332,37 @@ const Hotelzinho = () => {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label>Check-in</Label>
-                    <Input type="date" />
+                    <Label>Check-in *</Label>
+                    <Input 
+                      type="date" 
+                      value={formData.checkIn}
+                      onChange={(e) => setFormData(prev => ({ ...prev, checkIn: e.target.value }))}
+                    />
                   </div>
                   <div>
-                    <Label>Check-out</Label>
-                    <Input type="date" />
+                    <Label>Check-out *</Label>
+                    <Input 
+                      type="date" 
+                      value={formData.checkOut}
+                      onChange={(e) => setFormData(prev => ({ ...prev, checkOut: e.target.value }))}
+                    />
                   </div>
                 </div>
                 <div>
-                  <Label>Valor da Diária</Label>
-                  <Input type="number" placeholder="R$ 0,00" />
+                  <Label>Valor da Diária *</Label>
+                  <Input 
+                    type="number" 
+                    placeholder="R$ 0,00" 
+                    value={formData.dailyRate}
+                    onChange={(e) => setFormData(prev => ({ ...prev, dailyRate: e.target.value }))}
+                  />
                 </div>
-                <Button className="w-full bg-gradient-primary hover:opacity-90">
-                  Reservar
+                <Button 
+                  className="w-full bg-gradient-primary hover:opacity-90"
+                  onClick={handleSaveBooking}
+                  disabled={isLoading}
+                >
+                  {isLoading ? 'Salvando...' : 'Reservar'}
                 </Button>
               </div>
             </DialogContent>
@@ -156,7 +388,7 @@ const Hotelzinho = () => {
               </div>
               <div className="flex gap-4">
                 {activeGuests.slice(0, 4).map(guest => {
-                  const pet = getPet(guest.petId);
+                  const pet = getPet(guest.pet_id);
                   return (
                     <div 
                       key={guest.id}
@@ -165,7 +397,7 @@ const Hotelzinho = () => {
                       <div className="text-2xl mb-1">🐕</div>
                       <p className="text-sm font-medium">{pet?.name}</p>
                       <p className="text-xs text-white/60">
-                        até {new Date(guest.checkOut).toLocaleDateString('pt-BR', { 
+                        até {new Date(guest.check_out).toLocaleDateString('pt-BR', { 
                           day: '2-digit', 
                           month: 'short' 
                         })}
@@ -234,43 +466,49 @@ const Hotelzinho = () => {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Detalhes da Hospedagem</DialogTitle>
+            <DialogDescription>
+              Visualize e gerencie os detalhes desta reserva.
+            </DialogDescription>
           </DialogHeader>
           {selectedBooking && (
             <div className="space-y-4 py-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm text-muted-foreground">Pet</p>
-                  <p className="font-semibold">{getPet(selectedBooking.petId)?.name}</p>
+                  <p className="font-semibold">{getPet(selectedBooking.pet_id)?.name}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Cliente</p>
-                  <p className="font-semibold">{getClient(selectedBooking.clientId)?.name}</p>
+                  <p className="font-semibold">{getClient(selectedBooking.client_id)?.name}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Check-in</p>
                   <p className="font-semibold">
-                    {new Date(selectedBooking.checkIn).toLocaleDateString('pt-BR')}
+                    {new Date(selectedBooking.check_in).toLocaleDateString('pt-BR')}
                   </p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Check-out</p>
                   <p className="font-semibold">
-                    {new Date(selectedBooking.checkOut).toLocaleDateString('pt-BR')}
+                    {new Date(selectedBooking.check_out).toLocaleDateString('pt-BR')}
                   </p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Diária</p>
-                  <p className="font-semibold">R$ {selectedBooking.dailyRate.toFixed(2)}</p>
+                  <p className="font-semibold">R$ {selectedBooking.daily_rate.toFixed(2)}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Total</p>
                   <p className="font-semibold text-primary">
-                    R$ {selectedBooking.totalPrice.toFixed(2)}
+                    R$ {selectedBooking.total_price?.toFixed(2) || '0.00'}
                   </p>
                 </div>
                 <div className="col-span-2">
                   <Label>Status</Label>
-                  <Select defaultValue={selectedBooking.status}>
+                  <Select 
+                    value={selectedBooking.status || 'reservado'}
+                    onValueChange={(value) => handleStatusChange(value as HotelStatus)}
+                  >
                     <SelectTrigger className="w-full mt-1">
                       <SelectValue />
                     </SelectTrigger>
