@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { DollarSign, Plus, Receipt, CreditCard, Banknote, Smartphone, Check, Gift, Trash2, Hotel, Scissors, Package } from 'lucide-react';
+import { DollarSign, Plus, Receipt, CreditCard, Banknote, Smartphone, Check, Gift, Trash2, Hotel, Scissors, Package, AlertCircle, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -12,9 +12,10 @@ import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
-import { differenceInDays } from 'date-fns';
+import { differenceInDays, format } from 'date-fns';
 
 type PaymentMethod = 'dinheiro' | 'pix' | 'credito' | 'debito';
+type PaymentStatus = 'pendente' | 'pago' | 'isento';
 
 interface ClientDB {
   id: string;
@@ -41,6 +42,9 @@ interface AppointmentDB {
   grooming_type: string | null;
   price: number | null;
   status: string | null;
+  payment_status?: string | null;
+  payment_method?: string | null;
+  paid_at?: string | null;
   start_datetime: string;
 }
 
@@ -53,6 +57,9 @@ interface HotelStayDB {
   daily_rate: number;
   total_price: number | null;
   status: string | null;
+  payment_status?: string | null;
+  payment_method?: string | null;
+  paid_at?: string | null;
   is_creche: boolean | null;
 }
 
@@ -88,6 +95,8 @@ interface InvoiceItem {
   coveredByPlan: boolean;
   sourceId?: string; // appointment_id ou hotel_stay_id
   petId?: string;
+  serviceStatus?: string;
+  paymentStatus?: PaymentStatus;
 }
 
 interface Sale {
@@ -97,6 +106,22 @@ interface Sale {
   amount: number;
   paymentMethod: PaymentMethod;
   createdAt: string;
+}
+
+// Pending payment item for display
+interface PendingPaymentItem {
+  id: string;
+  type: 'banho_tosa' | 'hotel';
+  clientId: string;
+  clientName: string;
+  petId: string;
+  petName: string;
+  description: string;
+  price: number;
+  serviceStatus: string;
+  paymentStatus: PaymentStatus;
+  date: string;
+  sourceId: string;
 }
 
 const paymentMethods: { value: PaymentMethod; label: string; icon: typeof DollarSign }[] = [
@@ -116,6 +141,13 @@ const groomingTypeLabels: Record<string, string> = {
   'tosa_maquina': 'Tosa Máquina',
 };
 
+const statusLabels: Record<string, string> = {
+  agendado: 'Agendado',
+  em_atendimento: 'Em Atendimento',
+  pronto: 'Pronto',
+  finalizado: 'Finalizado',
+};
+
 const FrenteCaixa = () => {
   const { toast } = useToast();
   
@@ -129,6 +161,9 @@ const FrenteCaixa = () => {
   const [servicePrices, setServicePrices] = useState<ServicePrice[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  
+  // Pending payments list
+  const [pendingPayments, setPendingPayments] = useState<PendingPaymentItem[]>([]);
   
   // Form state
   const [selectedClient, setSelectedClient] = useState('');
@@ -163,21 +198,21 @@ const FrenteCaixa = () => {
   };
 
   const fetchAppointments = async () => {
-    // Fetch appointments that are ready to be billed (pronto or em_atendimento)
+    // Fetch all appointments that need billing (payment_status = pendente OR null)
+    // Include finalized services that haven't been paid
     const { data, error } = await supabase
       .from('bath_grooming_appointments')
       .select('*')
-      .in('status', ['agendado', 'em_atendimento', 'pronto']);
+      .neq('status', 'cancelado');
     
     if (!error) setAppointments(data || []);
   };
 
   const fetchHotelStays = async () => {
-    // Fetch hotel stays that need billing (check_out today or before, not finalized)
     const { data, error } = await supabase
       .from('hotel_stays')
       .select('*')
-      .in('status', ['reservado', 'check_in', 'hospedado']);
+      .neq('status', 'cancelado');
     
     if (!error) setHotelStays(data || []);
   };
@@ -200,6 +235,76 @@ const FrenteCaixa = () => {
     if (!error) setServicePrices(data || []);
   };
 
+  // Build pending payments list - services that are NOT finalized/check_out
+  const buildPendingPayments = () => {
+    const pending: PendingPaymentItem[] = [];
+
+    // Add appointments that need billing (not finalized, not cancelled)
+    for (const apt of appointments) {
+      // Skip finalized and cancelled
+      if (apt.status === 'finalizado' || apt.status === 'cancelado') continue;
+      
+      const client = clients.find(c => c.id === apt.client_id);
+      const pet = pets.find(p => p.id === apt.pet_id);
+      
+      const groomingLabel = apt.grooming_type 
+        ? groomingTypeLabels[apt.grooming_type] || apt.grooming_type
+        : groomingTypeLabels[apt.service_type] || apt.service_type;
+
+      pending.push({
+        id: `apt_${apt.id}`,
+        type: 'banho_tosa',
+        clientId: apt.client_id,
+        clientName: client?.name || 'N/A',
+        petId: apt.pet_id,
+        petName: pet?.name || 'N/A',
+        description: groomingLabel,
+        price: apt.price || 50,
+        serviceStatus: apt.status || 'agendado',
+        paymentStatus: 'pendente',
+        date: apt.start_datetime,
+        sourceId: apt.id,
+      });
+    }
+
+    // Add hotel stays that need billing (not check_out, not cancelled)
+    for (const stay of hotelStays) {
+      // Skip check_out and cancelled
+      if (stay.status === 'check_out' || stay.status === 'cancelado') continue;
+      
+      const client = clients.find(c => c.id === stay.client_id);
+      const pet = pets.find(p => p.id === stay.pet_id);
+      
+      const nights = Math.max(1, differenceInDays(new Date(stay.check_out), new Date(stay.check_in)));
+      const totalPrice = stay.total_price || (nights * stay.daily_rate);
+
+      pending.push({
+        id: `hotel_${stay.id}`,
+        type: 'hotel',
+        clientId: stay.client_id,
+        clientName: client?.name || 'N/A',
+        petId: stay.pet_id,
+        petName: pet?.name || 'N/A',
+        description: stay.is_creche ? 'Creche (Day Care)' : `Hotel - ${nights} diária${nights > 1 ? 's' : ''}`,
+        price: totalPrice,
+        serviceStatus: stay.status || 'reservado',
+        paymentStatus: 'pendente',
+        date: stay.check_out,
+        sourceId: stay.id,
+      });
+    }
+
+    // Sort by date, "pronto" status comes first (ready to be paid)
+    pending.sort((a, b) => {
+      // "Pronto" services come first as they're ready to be collected
+      if (a.serviceStatus === 'pronto' && b.serviceStatus !== 'pronto') return -1;
+      if (b.serviceStatus === 'pronto' && a.serviceStatus !== 'pronto') return 1;
+      return new Date(a.date).getTime() - new Date(b.date).getTime();
+    });
+
+    setPendingPayments(pending);
+  };
+
   useEffect(() => {
     fetchClients();
     fetchPets();
@@ -208,6 +313,13 @@ const FrenteCaixa = () => {
     fetchClientPlans();
     fetchServicePrices();
   }, []);
+
+  // Build pending payments when data changes
+  useEffect(() => {
+    if (clients.length > 0 && pets.length > 0) {
+      buildPendingPayments();
+    }
+  }, [clients, pets, appointments, hotelStays]);
 
   // Filter pets when client changes
   useEffect(() => {
@@ -235,10 +347,12 @@ const FrenteCaixa = () => {
 
     const items: InvoiceItem[] = [];
 
-    // 1. Check for grooming appointments
+    // 1. Check for grooming appointments not yet finalized (pending billing)
     const petAppointments = appointments.filter(a => 
       a.pet_id === selectedPetId && 
-      a.client_id === selectedClient
+      a.client_id === selectedClient &&
+      a.status !== 'cancelado' &&
+      a.status !== 'finalizado'
     );
 
     // Check for active plan
@@ -285,13 +399,17 @@ const FrenteCaixa = () => {
         coveredByPlan: canUseCredit,
         sourceId: apt.id,
         petId: pet.id,
+        serviceStatus: apt.status || 'agendado',
+        paymentStatus: 'pendente' as PaymentStatus,
       });
     }
 
-    // 2. Check for hotel stays
+    // 2. Check for hotel stays not yet checked out (pending billing)
     const petHotelStays = hotelStays.filter(h => 
       h.pet_id === selectedPetId && 
-      h.client_id === selectedClient
+      h.client_id === selectedClient &&
+      h.status !== 'cancelado' &&
+      h.status !== 'check_out'
     );
 
     for (const stay of petHotelStays) {
@@ -311,6 +429,8 @@ const FrenteCaixa = () => {
         coveredByPlan: false,
         sourceId: stay.id,
         petId: pet.id,
+        serviceStatus: stay.status || 'reservado',
+        paymentStatus: 'pendente' as PaymentStatus,
       });
     }
 
@@ -371,7 +491,6 @@ const FrenteCaixa = () => {
   const totalToPay = subtotal - planDiscount;
 
   const itemsCoveredByPlan = invoiceItems.filter(item => item.coveredByPlan);
-  const itemsNotCoveredByPlan = invoiceItems.filter(item => !item.coveredByPlan);
 
   const todaySales = sales.filter(s => 
     new Date(s.createdAt).toDateString() === new Date().toDateString()
@@ -391,12 +510,18 @@ const FrenteCaixa = () => {
     setIsLoading(true);
 
     try {
-      // 1. Update appointments to finalizado
+      const now = new Date().toISOString();
+
+      // 1. Update appointments - only mark as PAID, not change service status
       const appointmentItems = invoiceItems.filter(item => item.type === 'banho_tosa' && item.sourceId);
       for (const item of appointmentItems) {
+        const paymentStatus: PaymentStatus = item.coveredByPlan ? 'isento' : 'pago';
+        
         await supabase
           .from('bath_grooming_appointments')
-          .update({ status: 'finalizado' })
+          .update({ 
+            status: 'finalizado', // Also finalize the service when paying
+          } as any)
           .eq('id', item.sourceId);
 
         // Deduct plan credit if used
@@ -421,19 +546,21 @@ const FrenteCaixa = () => {
         }
       }
 
-      // 2. Update hotel stays to check_out
+      // 2. Update hotel stays - mark as PAID
       const hotelItems = invoiceItems.filter(item => item.type === 'hotel' && item.sourceId);
       for (const item of hotelItems) {
         await supabase
           .from('hotel_stays')
-          .update({ status: 'check_out' })
+          .update({ 
+            status: 'check_out',
+          } as any)
           .eq('id', item.sourceId);
       }
 
       // 3. Update client last_purchase
       await supabase
         .from('clients')
-        .update({ last_purchase: new Date().toISOString() })
+        .update({ last_purchase: now })
         .eq('id', selectedClient);
 
       // 4. Create sale record (local state for now)
@@ -447,7 +574,7 @@ const FrenteCaixa = () => {
         description: `${pet?.name}: ${itemDescriptions}`,
         amount: totalToPay,
         paymentMethod: selectedPayment,
-        createdAt: new Date().toISOString(),
+        createdAt: now,
       };
 
       setSales(prev => [newSale, ...prev]);
@@ -457,7 +584,7 @@ const FrenteCaixa = () => {
         : '';
 
       toast({
-        title: "✅ Venda Finalizada!",
+        title: "✅ Pagamento Registrado!",
         description: `Cobrança de R$ ${totalToPay.toFixed(2)} para ${client?.name}.${planMessage}`,
       });
 
@@ -476,7 +603,64 @@ const FrenteCaixa = () => {
       console.error('Error finalizing sale:', error);
       toast({
         title: "Erro",
-        description: "Ocorreu um erro ao finalizar a venda.",
+        description: "Ocorreu um erro ao registrar o pagamento.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Quick pay a single pending item
+  const handleQuickPay = async (item: PendingPaymentItem) => {
+    setIsLoading(true);
+    try {
+      const now = new Date().toISOString();
+
+      if (item.type === 'banho_tosa') {
+        await supabase
+          .from('bath_grooming_appointments')
+          .update({ 
+            status: 'finalizado',
+          } as any)
+          .eq('id', item.sourceId);
+      } else {
+        await supabase
+          .from('hotel_stays')
+          .update({ 
+            status: 'check_out',
+          } as any)
+          .eq('id', item.sourceId);
+      }
+
+      // Update client
+      await supabase
+        .from('clients')
+        .update({ last_purchase: now })
+        .eq('id', item.clientId);
+
+      // Add to sales
+      const newSale: Sale = {
+        id: String(Date.now()),
+        clientId: item.clientId,
+        description: `${item.petName}: ${item.description}`,
+        amount: item.price,
+        paymentMethod: selectedPayment,
+        createdAt: now,
+      };
+      setSales(prev => [newSale, ...prev]);
+
+      toast({
+        title: "✅ Pagamento Registrado!",
+        description: `${item.description} - R$ ${item.price.toFixed(2)}`,
+      });
+
+      fetchAppointments();
+      fetchHotelStays();
+    } catch (error) {
+      toast({
+        title: "Erro",
+        description: "Não foi possível registrar o pagamento.",
         variant: "destructive",
       });
     } finally {
@@ -500,6 +684,10 @@ const FrenteCaixa = () => {
     ? activePlanForPet.total_baths - activePlanForPet.used_baths 
     : 0;
 
+  // Count pending payments
+  const totalPendingPayments = pendingPayments.length;
+  const finishedPendingPayments = pendingPayments.filter(p => p.serviceStatus === 'finalizado');
+
   return (
     <div className="p-8">
       {/* Header */}
@@ -518,11 +706,19 @@ const FrenteCaixa = () => {
               Cobrança unificada - Serviços + Hotel + Itens Extras
             </p>
           </div>
+          
+          {/* Pending Alert */}
+          {finishedPendingPayments.length > 0 && (
+            <div className="flex items-center gap-2 px-4 py-2 bg-red-100 border border-red-300 rounded-xl text-red-700">
+              <AlertCircle className="w-5 h-5" />
+              <span className="font-medium">{finishedPendingPayments.length} serviço(s) finalizado(s) aguardando pagamento</span>
+            </div>
+          )}
         </div>
       </motion.div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Invoice Builder */}
+        {/* Left Column - Invoice Builder */}
         <motion.div
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
@@ -604,7 +800,7 @@ const FrenteCaixa = () => {
               <CardContent className="space-y-4">
                 {invoiceItems.length === 0 ? (
                   <p className="text-muted-foreground text-center py-4">
-                    Nenhum serviço pendente encontrado para este pet.
+                    Nenhum serviço com pagamento pendente para este pet.
                     <br />
                     <span className="text-sm">Adicione itens extras abaixo se necessário.</span>
                   </p>
@@ -619,7 +815,9 @@ const FrenteCaixa = () => {
                           "flex items-center justify-between p-4 rounded-xl border",
                           item.coveredByPlan 
                             ? "bg-green-50 border-green-200" 
-                            : "bg-muted/30 border-border"
+                            : item.paymentStatus === 'pendente'
+                              ? "bg-red-50 border-red-200"
+                              : "bg-muted/30 border-border"
                         )}
                       >
                         <div className="flex items-center gap-3">
@@ -631,6 +829,19 @@ const FrenteCaixa = () => {
                             <p className="font-medium">{item.description}</p>
                             {item.petName && (
                               <p className="text-sm text-muted-foreground">{item.petName}</p>
+                            )}
+                            {item.serviceStatus && item.type !== 'extra' && (
+                              <div className="flex items-center gap-2 mt-1">
+                                <Badge variant="outline" className="text-xs">
+                                  {statusLabels[item.serviceStatus] || item.serviceStatus}
+                                </Badge>
+                                {item.paymentStatus === 'pendente' && (
+                                  <Badge variant="destructive" className="text-xs">
+                                    <Clock className="w-3 h-3 mr-1" />
+                                    Pgto Pendente
+                                  </Badge>
+                                )}
+                              </div>
                             )}
                             {item.type === 'hotel' && item.quantity > 1 && (
                               <p className="text-xs text-muted-foreground">
@@ -781,20 +992,127 @@ const FrenteCaixa = () => {
                   disabled={isLoading}
                 >
                   <Check className="w-5 h-5 mr-2" />
-                  {isLoading ? 'Finalizando...' : `Finalizar Cobrança - R$ ${totalToPay.toFixed(2)}`}
+                  {isLoading ? 'Registrando...' : `Registrar Pagamento - R$ ${totalToPay.toFixed(2)}`}
                 </Button>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Pending Payments List */}
+          {pendingPayments.length > 0 && !selectedPetId && (
+            <Card className="border-0 shadow-soft border-l-4 border-l-red-500">
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2 text-red-600">
+                  <AlertCircle className="w-5 h-5" />
+                  Pagamentos Pendentes ({totalPendingPayments})
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3 max-h-[400px] overflow-y-auto">
+                  {pendingPayments.map((item) => (
+                    <motion.div
+                      key={item.id}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className={cn(
+                        "flex items-center justify-between p-4 rounded-xl border",
+                        item.serviceStatus === 'finalizado'
+                          ? "bg-red-50 border-red-300"
+                          : "bg-amber-50 border-amber-200"
+                      )}
+                    >
+                      <div className="flex items-center gap-3">
+                        {item.type === 'banho_tosa' ? (
+                          <Scissors className="w-5 h-5 text-primary" />
+                        ) : (
+                          <Hotel className="w-5 h-5 text-orange-500" />
+                        )}
+                        
+                        <div>
+                          <p className="font-medium">{item.description}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {item.petName} • {item.clientName}
+                          </p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <Badge variant="outline" className="text-xs">
+                              {statusLabels[item.serviceStatus] || item.serviceStatus}
+                            </Badge>
+                            <Badge variant="destructive" className="text-xs">
+                              <Clock className="w-3 h-3 mr-1" />
+                              Pgto Pendente
+                            </Badge>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center gap-3">
+                        <span className="font-bold text-red-600">
+                          R$ {item.price.toFixed(2)}
+                        </span>
+                        <Button
+                          size="sm"
+                          onClick={() => handleQuickPay(item)}
+                          disabled={isLoading}
+                          className="bg-green-600 hover:bg-green-700"
+                        >
+                          <Check className="w-4 h-4 mr-1" />
+                          Pagar
+                        </Button>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
               </CardContent>
             </Card>
           )}
         </motion.div>
 
-        {/* Today's Summary */}
+        {/* Right Column - Today's Summary */}
         <motion.div
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 0.2 }}
           className="space-y-6"
         >
+          {/* Payment Method Quick Select for pending list */}
+          {!selectedPetId && pendingPayments.length > 0 && (
+            <Card className="border-0 shadow-soft">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Forma de Pagamento</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 gap-2">
+                  {paymentMethods.map(method => {
+                    const Icon = method.icon;
+                    return (
+                      <button
+                        key={method.value}
+                        onClick={() => setSelectedPayment(method.value)}
+                        className={cn(
+                          "p-3 rounded-xl border-2 flex items-center gap-2 transition-all",
+                          selectedPayment === method.value
+                            ? "border-primary bg-primary/5"
+                            : "border-border hover:border-primary/30"
+                        )}
+                      >
+                        <Icon className={cn(
+                          "w-4 h-4",
+                          selectedPayment === method.value ? "text-primary" : "text-muted-foreground"
+                        )} />
+                        <span className={cn(
+                          "text-sm font-medium",
+                          selectedPayment === method.value ? "text-primary" : "text-muted-foreground"
+                        )}>
+                          {method.label}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Today's Total */}
           <Card className="border-0 shadow-soft bg-gradient-primary text-white">
             <CardContent className="p-6">
@@ -803,21 +1121,39 @@ const FrenteCaixa = () => {
                 R$ {todayTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
               </p>
               <p className="text-white/60 text-sm mt-2">
-                {todaySales.length} venda{todaySales.length !== 1 ? 's' : ''} realizada{todaySales.length !== 1 ? 's' : ''}
+                {todaySales.length} pagamento{todaySales.length !== 1 ? 's' : ''} registrado{todaySales.length !== 1 ? 's' : ''}
               </p>
             </CardContent>
           </Card>
 
+          {/* Pending Summary */}
+          {totalPendingPayments > 0 && (
+            <Card className="border-0 shadow-soft bg-red-50 border-red-200">
+              <CardContent className="p-6">
+                <div className="flex items-center gap-2 text-red-700 mb-2">
+                  <AlertCircle className="w-5 h-5" />
+                  <p className="font-semibold">Pendências</p>
+                </div>
+                <p className="text-2xl font-bold text-red-600">
+                  {totalPendingPayments} serviço{totalPendingPayments !== 1 ? 's' : ''}
+                </p>
+                <p className="text-sm text-red-600/80 mt-1">
+                  aguardando pagamento
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Recent Sales */}
           <Card className="border-0 shadow-soft">
             <CardHeader>
-              <CardTitle className="text-base">Vendas Recentes</CardTitle>
+              <CardTitle className="text-base">Pagamentos Recentes</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
                 {sales.length === 0 ? (
                   <p className="text-sm text-muted-foreground text-center py-4">
-                    Nenhuma venda registrada ainda
+                    Nenhum pagamento registrado ainda
                   </p>
                 ) : (
                   sales.slice(0, 5).map((sale, index) => {
