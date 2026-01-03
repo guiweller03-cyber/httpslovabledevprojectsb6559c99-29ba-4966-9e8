@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Syringe, Bug } from 'lucide-react';
+import { Plus, Syringe, Bug, Pill } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
@@ -190,7 +190,7 @@ export const VaccineBooklet = ({ petId, petName }: VaccineBookletProps) => {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Syringe className="w-5 h-5 text-primary" />
-          <h3 className="font-semibold text-base">Caderneta de Vacinação</h3>
+          <h3 className="font-semibold text-base">🩺 Caderneta de Saúde</h3>
         </div>
         <Button
           size="sm"
@@ -198,7 +198,7 @@ export const VaccineBooklet = ({ petId, petName }: VaccineBookletProps) => {
           className="bg-gradient-primary hover:opacity-90"
         >
           <Plus className="w-4 h-4 mr-1" />
-          Adicionar vacina
+          Registrar novo item
         </Button>
       </div>
 
@@ -208,8 +208,8 @@ export const VaccineBooklet = ({ petId, petName }: VaccineBookletProps) => {
       ) : vaccines.length === 0 ? (
         <div className="text-center py-6 text-muted-foreground bg-background rounded-lg border border-dashed">
           <Syringe className="w-8 h-8 mx-auto mb-2 opacity-50" />
-          <p className="text-sm">Nenhuma vacina registrada</p>
-          <p className="text-xs">Clique em "Adicionar vacina" para começar</p>
+          <p className="text-sm">Nenhum registro na caderneta</p>
+          <p className="text-xs">Clique em "Registrar novo item" para começar</p>
         </div>
       ) : (
         <div className="space-y-2 max-h-[300px] overflow-y-auto">
@@ -225,11 +225,18 @@ export const VaccineBooklet = ({ petId, petName }: VaccineBookletProps) => {
                 <div className="flex items-center gap-3">
                   {vaccine.tipo === 'vacina' ? (
                     <Syringe className={`w-4 h-4 ${status.color}`} />
+                  ) : vaccine.tipo === 'vermifugo' ? (
+                    <Pill className={`w-4 h-4 ${status.color}`} />
                   ) : (
                     <Bug className={`w-4 h-4 ${status.color}`} />
                   )}
                   <div>
-                    <p className="font-medium text-sm">{vaccine.nome}</p>
+                    <p className="font-medium text-sm">
+                      <span className="text-xs text-muted-foreground mr-1">
+                        [{vaccine.tipo === 'vacina' ? 'Vacina' : vaccine.tipo === 'vermifugo' ? 'Vermífugo' : 'Antipulgas'}]
+                      </span>
+                      {vaccine.nome}
+                    </p>
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       <span>
                         Aplicada: {format(parseISO(vaccine.data_aplicacao), 'dd/MM/yyyy', { locale: ptBR })}
@@ -270,31 +277,42 @@ export const VaccineBooklet = ({ petId, petName }: VaccineBookletProps) => {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Syringe className="w-5 h-5 text-primary" />
-              Adicionar nova vacina
+              Registrar novo item
             </DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4 py-4">
             <div>
-              <Label>Tipo *</Label>
+              <Label>Categoria *</Label>
               <Select
                 value={newVaccine.tipo}
-                onValueChange={(value) => setNewVaccine((prev) => ({ ...prev, tipo: value }))}
+                onValueChange={(value) => setNewVaccine((prev) => ({ 
+                  ...prev, 
+                  tipo: value,
+                  validadeMeses: value === 'vacina' ? '12' : value === 'vermifugo' ? '3' : '1'
+                }))}
               >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="vacina">Vacina</SelectItem>
-                  <SelectItem value="antiparasitario">Antiparasitário</SelectItem>
+                  <SelectItem value="vacina">🩺 Vacina</SelectItem>
+                  <SelectItem value="antiparasitario">🐛 Antipulgas / Antiparasitário</SelectItem>
+                  <SelectItem value="vermifugo">💊 Vermífugo</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
             <div>
-              <Label>Nome *</Label>
+              <Label>Nome / Marca *</Label>
               <Input
-                placeholder={newVaccine.tipo === 'vacina' ? 'Ex: V10, V8, Antirrábica' : 'Ex: Bravecto, Nexgard, Vermífugo'}
+                placeholder={
+                  newVaccine.tipo === 'vacina' 
+                    ? 'Ex: V10, V8, Antirrábica' 
+                    : newVaccine.tipo === 'vermifugo'
+                    ? 'Ex: Drontal, Vermivet'
+                    : 'Ex: Bravecto, Nexgard, Simparic'
+                }
                 value={newVaccine.nome}
                 onChange={(e) => setNewVaccine((prev) => ({ ...prev, nome: e.target.value }))}
               />
@@ -310,15 +328,21 @@ export const VaccineBooklet = ({ petId, petName }: VaccineBookletProps) => {
             </div>
 
             <div>
-              <Label>Validade (meses)</Label>
+              <Label>
+                Validade ({newVaccine.tipo === 'vacina' ? 'meses' : 'meses'})
+              </Label>
               <Input
                 type="number"
-                placeholder="12"
+                placeholder={newVaccine.tipo === 'vacina' ? '12' : newVaccine.tipo === 'vermifugo' ? '3' : '1'}
                 value={newVaccine.validadeMeses}
                 onChange={(e) => setNewVaccine((prev) => ({ ...prev, validadeMeses: e.target.value }))}
               />
               <p className="text-xs text-muted-foreground mt-1">
-                O sistema calculará a data de vencimento automaticamente
+                {newVaccine.tipo === 'vacina' 
+                  ? 'Vacinas geralmente têm validade de 12 meses'
+                  : newVaccine.tipo === 'vermifugo'
+                  ? 'Vermífugos geralmente têm validade de 3 meses'
+                  : 'Antipulgas geralmente têm validade de 1 mês'}
               </p>
             </div>
           </div>
@@ -339,7 +363,7 @@ export const VaccineBooklet = ({ petId, petName }: VaccineBookletProps) => {
               disabled={isSaving}
               className="flex-1 bg-gradient-primary hover:opacity-90"
             >
-              {isSaving ? 'Salvando...' : 'Salvar vacina'}
+              {isSaving ? 'Salvando...' : 'Salvar registro'}
             </Button>
           </div>
         </DialogContent>

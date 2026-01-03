@@ -414,6 +414,47 @@ export type Database = {
         }
         Relationships: []
       }
+      pet_vacinas: {
+        Row: {
+          created_at: string | null
+          data_aplicacao: string
+          data_vencimento: string
+          id: string
+          nome: string
+          pet_id: string
+          tipo: string
+          validade_meses: number
+        }
+        Insert: {
+          created_at?: string | null
+          data_aplicacao: string
+          data_vencimento: string
+          id?: string
+          nome: string
+          pet_id: string
+          tipo: string
+          validade_meses?: number
+        }
+        Update: {
+          created_at?: string | null
+          data_aplicacao?: string
+          data_vencimento?: string
+          id?: string
+          nome?: string
+          pet_id?: string
+          tipo?: string
+          validade_meses?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pet_vacinas_pet_id_fkey"
+            columns: ["pet_id"]
+            isOneToOne: false
+            referencedRelation: "pets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pets: {
         Row: {
           breed: string | null
