@@ -4,10 +4,10 @@ import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import { motion } from 'framer-motion';
-import { Plus, Scissors, CheckCircle2, MessageCircle } from 'lucide-react';
+import { Plus, Scissors, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -17,7 +17,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 
-type AppointmentStatus = 'agendado' | 'em_atendimento' | 'pronto' | 'finalizado';
+type AppointmentStatus = 'agendado' | 'em_atendimento' | 'pronto' | 'finalizado' | 'cancelado';
 
 interface ClientDB {
   id: string;
@@ -71,6 +71,7 @@ const statusColors: Record<AppointmentStatus, string> = {
   em_atendimento: '#f59e0b',
   pronto: '#22c55e',
   finalizado: '#9ca3af',
+  cancelado: '#ef4444',
 };
 
 const BanhoTosa = () => {
@@ -88,6 +89,7 @@ const BanhoTosa = () => {
   const [selectedAppointment, setSelectedAppointment] = useState<AppointmentDB | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isNewDialogOpen, setIsNewDialogOpen] = useState(false);
+  const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   
   // Form state
@@ -232,24 +234,27 @@ const BanhoTosa = () => {
     }));
   };
 
-  const events = appointments.map(apt => {
-    const pet = pets.find(p => p.id === apt.pet_id);
-    const client = clients.find(c => c.id === apt.client_id);
-    
-    return {
-      id: apt.id,
-      title: `${pet?.name || 'Pet'} - ${apt.service_type === 'banho' ? 'Banho' : 'Banho + Tosa'}`,
-      start: apt.start_datetime,
-      end: apt.end_datetime,
-      backgroundColor: statusColors[(apt.status as AppointmentStatus) || 'agendado'],
-      borderColor: statusColors[(apt.status as AppointmentStatus) || 'agendado'],
-      extendedProps: {
-        ...apt,
-        petName: pet?.name,
-        clientName: client?.name,
-      },
-    };
-  });
+  // Filter out cancelled appointments from calendar (or show differently)
+  const events = appointments
+    .filter(apt => apt.status !== 'cancelado') // Hide cancelled from calendar
+    .map(apt => {
+      const pet = pets.find(p => p.id === apt.pet_id);
+      const client = clients.find(c => c.id === apt.client_id);
+      
+      return {
+        id: apt.id,
+        title: `${pet?.name || 'Pet'} - ${apt.service_type === 'banho' ? 'Banho' : 'Banho + Tosa'}`,
+        start: apt.start_datetime,
+        end: apt.end_datetime,
+        backgroundColor: statusColors[(apt.status as AppointmentStatus) || 'agendado'],
+        borderColor: statusColors[(apt.status as AppointmentStatus) || 'agendado'],
+        extendedProps: {
+          ...apt,
+          petName: pet?.name,
+          clientName: client?.name,
+        },
+      };
+    });
 
   const handleEventClick = (info: any) => {
     const apt = appointments.find(a => a.id === info.event.id);
@@ -290,6 +295,49 @@ const BanhoTosa = () => {
     }
 
     setSelectedAppointment({ ...selectedAppointment, status });
+  };
+
+  const handleCancelAppointment = async () => {
+    if (!selectedAppointment) return;
+
+    // Only allow cancellation if not finalized
+    if (selectedAppointment.status === 'finalizado') {
+      toast({
+        title: "Não permitido",
+        description: "Agendamentos finalizados não podem ser cancelados.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const { error } = await supabase
+      .from('bath_grooming_appointments')
+      .update({ status: 'cancelado' })
+      .eq('id', selectedAppointment.id);
+
+    if (error) {
+      toast({
+        title: "Erro",
+        description: "Não foi possível cancelar o agendamento.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setAppointments(prev => 
+      prev.map(apt => 
+        apt.id === selectedAppointment.id ? { ...apt, status: 'cancelado' } : apt
+      )
+    );
+
+    toast({
+      title: "❌ Agendamento Cancelado",
+      description: "O agendamento foi cancelado com sucesso.",
+    });
+
+    setIsCancelDialogOpen(false);
+    setIsDialogOpen(false);
+    setSelectedAppointment(null);
   };
 
   const handlePetReady = async () => {
@@ -369,6 +417,10 @@ const BanhoTosa = () => {
     if (!addonIds || addonIds.length === 0) return null;
     return addonIds.map(id => serviceAddons.find(a => a.id === id)?.name).filter(Boolean).join(', ');
   };
+
+  const canCancel = selectedAppointment && 
+    selectedAppointment.status !== 'finalizado' && 
+    selectedAppointment.status !== 'cancelado';
 
   return (
     <div className="p-8">
@@ -645,20 +697,24 @@ const BanhoTosa = () => {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Status</p>
-                  <Select 
-                    value={selectedAppointment.status || 'agendado'}
-                    onValueChange={(value) => handleStatusChange(value as AppointmentStatus)}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="agendado">Agendado</SelectItem>
-                      <SelectItem value="em_atendimento">Em Atendimento</SelectItem>
-                      <SelectItem value="pronto">Pronto</SelectItem>
-                      <SelectItem value="finalizado">Finalizado</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  {selectedAppointment.status === 'cancelado' ? (
+                    <Badge variant="destructive">Cancelado</Badge>
+                  ) : (
+                    <Select 
+                      value={selectedAppointment.status || 'agendado'}
+                      onValueChange={(value) => handleStatusChange(value as AppointmentStatus)}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="agendado">Agendado</SelectItem>
+                        <SelectItem value="em_atendimento">Em Atendimento</SelectItem>
+                        <SelectItem value="pronto">Pronto</SelectItem>
+                        <SelectItem value="finalizado">Finalizado</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
               </div>
 
@@ -679,16 +735,68 @@ const BanhoTosa = () => {
                 </div>
               )}
 
-              {/* Pet Ready Button */}
-              <Button 
-                className="w-full bg-gradient-to-r from-green-500 to-emerald-500 hover:opacity-90"
-                onClick={handlePetReady}
-              >
-                <CheckCircle2 className="w-4 h-4 mr-2" />
-                Pet Pronto - Notificar Cliente
-              </Button>
+              {selectedAppointment.status !== 'cancelado' && (
+                <div className="flex gap-3">
+                  {/* Pet Ready Button */}
+                  <Button 
+                    className="flex-1 bg-gradient-to-r from-green-500 to-emerald-500 hover:opacity-90"
+                    onClick={handlePetReady}
+                    disabled={selectedAppointment.status === 'finalizado'}
+                  >
+                    <CheckCircle2 className="w-4 h-4 mr-2" />
+                    Pet Pronto - Notificar
+                  </Button>
+
+                  {/* Cancel Button */}
+                  {canCancel && (
+                    <Button 
+                      variant="destructive"
+                      onClick={() => setIsCancelDialogOpen(true)}
+                    >
+                      <XCircle className="w-4 h-4 mr-2" />
+                      Cancelar
+                    </Button>
+                  )}
+                </div>
+              )}
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Cancel Confirmation Dialog */}
+      <Dialog open={isCancelDialogOpen} onOpenChange={setIsCancelDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="w-5 h-5" />
+              Confirmar Cancelamento
+            </DialogTitle>
+            <DialogDescription>
+              Tem certeza que deseja cancelar este agendamento? Esta ação não pode ser desfeita.
+            </DialogDescription>
+          </DialogHeader>
+          {selectedAppointment && (
+            <div className="py-4">
+              <Card className="bg-destructive/5 border-destructive/20">
+                <CardContent className="p-4">
+                  <p className="text-sm"><strong>Pet:</strong> {getPet(selectedAppointment.pet_id)?.name}</p>
+                  <p className="text-sm"><strong>Cliente:</strong> {getClient(selectedAppointment.client_id)?.name}</p>
+                  <p className="text-sm"><strong>Serviço:</strong> {selectedAppointment.service_type?.replace('_', ' + ')}</p>
+                  <p className="text-sm"><strong>Valor:</strong> R$ {selectedAppointment.price?.toFixed(2)}</p>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsCancelDialogOpen(false)}>
+              Voltar
+            </Button>
+            <Button variant="destructive" onClick={handleCancelAppointment}>
+              <XCircle className="w-4 h-4 mr-2" />
+              Confirmar Cancelamento
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
