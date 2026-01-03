@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
+import { useSearchParams } from 'react-router-dom';
 import { DollarSign, Plus, Receipt, CreditCard, Banknote, Smartphone, Check, Gift, Trash2, Hotel, Scissors, Package, AlertCircle, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -150,6 +151,7 @@ const statusLabels: Record<string, string> = {
 
 const FrenteCaixa = () => {
   const { toast } = useToast();
+  const [searchParams] = useSearchParams();
   
   // State from database
   const [clients, setClients] = useState<ClientDB[]>([]);
@@ -235,14 +237,19 @@ const FrenteCaixa = () => {
     if (!error) setServicePrices(data || []);
   };
 
-  // Build pending payments list - services that are NOT finalized/check_out
+  // Build pending payments list - services FINALIZED but NOT PAID
+  // This is the key fix: finalized services with pending payment must appear here
   const buildPendingPayments = () => {
     const pending: PendingPaymentItem[] = [];
 
-    // Add appointments that need billing (not finalized, not cancelled)
+    // Add appointments that are FINALIZED but NOT PAID (payment_status != 'pago')
+    // OR services that are still in progress (not finalized, not cancelled)
     for (const apt of appointments) {
-      // Skip finalized and cancelled
-      if (apt.status === 'finalizado' || apt.status === 'cancelado') continue;
+      // Skip cancelled
+      if (apt.status === 'cancelado') continue;
+      
+      // Skip already paid
+      if (apt.payment_status === 'pago' || apt.payment_status === 'isento') continue;
       
       const client = clients.find(c => c.id === apt.client_id);
       const pet = pets.find(p => p.id === apt.pet_id);
@@ -261,16 +268,19 @@ const FrenteCaixa = () => {
         description: groomingLabel,
         price: apt.price || 50,
         serviceStatus: apt.status || 'agendado',
-        paymentStatus: 'pendente',
+        paymentStatus: (apt.payment_status as PaymentStatus) || 'pendente',
         date: apt.start_datetime,
         sourceId: apt.id,
       });
     }
 
-    // Add hotel stays that need billing (not check_out, not cancelled)
+    // Add hotel stays that are NOT PAID (not check_out with payment, not cancelled)
     for (const stay of hotelStays) {
-      // Skip check_out and cancelled
-      if (stay.status === 'check_out' || stay.status === 'cancelado') continue;
+      // Skip cancelled
+      if (stay.status === 'cancelado') continue;
+      
+      // Skip already paid
+      if (stay.payment_status === 'pago' || stay.payment_status === 'isento') continue;
       
       const client = clients.find(c => c.id === stay.client_id);
       const pet = pets.find(p => p.id === stay.pet_id);
@@ -288,15 +298,18 @@ const FrenteCaixa = () => {
         description: stay.is_creche ? 'Creche (Day Care)' : `Hotel - ${nights} diária${nights > 1 ? 's' : ''}`,
         price: totalPrice,
         serviceStatus: stay.status || 'reservado',
-        paymentStatus: 'pendente',
+        paymentStatus: (stay.payment_status as PaymentStatus) || 'pendente',
         date: stay.check_out,
         sourceId: stay.id,
       });
     }
 
-    // Sort by date, "pronto" status comes first (ready to be paid)
+    // Sort: FINALIZED services with pending payment come FIRST (ready to be paid)
     pending.sort((a, b) => {
-      // "Pronto" services come first as they're ready to be collected
+      // Finalized services come first as they're ready to be collected
+      if (a.serviceStatus === 'finalizado' && b.serviceStatus !== 'finalizado') return -1;
+      if (b.serviceStatus === 'finalizado' && a.serviceStatus !== 'finalizado') return 1;
+      // Then "pronto" services
       if (a.serviceStatus === 'pronto' && b.serviceStatus !== 'pronto') return -1;
       if (b.serviceStatus === 'pronto' && a.serviceStatus !== 'pronto') return 1;
       return new Date(a.date).getTime() - new Date(b.date).getTime();
@@ -306,13 +319,31 @@ const FrenteCaixa = () => {
   };
 
   useEffect(() => {
-    fetchClients();
-    fetchPets();
-    fetchAppointments();
-    fetchHotelStays();
-    fetchClientPlans();
-    fetchServicePrices();
+    const loadData = async () => {
+      await Promise.all([
+        fetchClients(),
+        fetchPets(),
+        fetchAppointments(),
+        fetchHotelStays(),
+        fetchClientPlans(),
+        fetchServicePrices(),
+      ]);
+    };
+    loadData();
   }, []);
+
+  // Auto-select client/pet from URL params (when redirected from ServicosDoDia)
+  useEffect(() => {
+    const clientIdParam = searchParams.get('clientId');
+    const petIdParam = searchParams.get('petId');
+    
+    if (clientIdParam && clients.length > 0) {
+      setSelectedClient(clientIdParam);
+    }
+    if (petIdParam && pets.length > 0 && clientIdParam === selectedClient) {
+      setSelectedPetId(petIdParam);
+    }
+  }, [searchParams, clients, pets, selectedClient]);
 
   // Build pending payments when data changes
   useEffect(() => {
@@ -347,12 +378,15 @@ const FrenteCaixa = () => {
 
     const items: InvoiceItem[] = [];
 
-    // 1. Check for grooming appointments not yet finalized (pending billing)
+    // 1. Check for grooming appointments that need billing:
+    // - FINALIZED with payment_status != 'pago'/'isento' (main case after clicking "Finalizar")
+    // - OR still in progress (agendado, em_atendimento, pronto)
     const petAppointments = appointments.filter(a => 
       a.pet_id === selectedPetId && 
       a.client_id === selectedClient &&
       a.status !== 'cancelado' &&
-      a.status !== 'finalizado'
+      a.payment_status !== 'pago' &&
+      a.payment_status !== 'isento'
     );
 
     // Check for active plan
@@ -364,7 +398,7 @@ const FrenteCaixa = () => {
       new Date(cp.expires_at) > new Date()
     );
 
-    const remainingCredits = activePlan 
+    const remainingCredits = activePlan
       ? activePlan.total_baths - activePlan.used_baths 
       : 0;
 
@@ -404,12 +438,13 @@ const FrenteCaixa = () => {
       });
     }
 
-    // 2. Check for hotel stays not yet checked out (pending billing)
+    // 2. Check for hotel stays that need billing (not paid yet)
     const petHotelStays = hotelStays.filter(h => 
       h.pet_id === selectedPetId && 
       h.client_id === selectedClient &&
       h.status !== 'cancelado' &&
-      h.status !== 'check_out'
+      h.payment_status !== 'pago' &&
+      h.payment_status !== 'isento'
     );
 
     for (const stay of petHotelStays) {
@@ -520,7 +555,10 @@ const FrenteCaixa = () => {
         await supabase
           .from('bath_grooming_appointments')
           .update({ 
-            status: 'finalizado', // Also finalize the service when paying
+            status: 'finalizado',
+            payment_status: paymentStatus,
+            payment_method: item.coveredByPlan ? null : selectedPayment,
+            paid_at: new Date().toISOString(),
           } as any)
           .eq('id', item.sourceId);
 
@@ -553,6 +591,9 @@ const FrenteCaixa = () => {
           .from('hotel_stays')
           .update({ 
             status: 'check_out',
+            payment_status: 'pago',
+            payment_method: selectedPayment,
+            paid_at: new Date().toISOString(),
           } as any)
           .eq('id', item.sourceId);
       }
@@ -622,6 +663,9 @@ const FrenteCaixa = () => {
           .from('bath_grooming_appointments')
           .update({ 
             status: 'finalizado',
+            payment_status: 'pago',
+            payment_method: selectedPayment,
+            paid_at: now,
           } as any)
           .eq('id', item.sourceId);
       } else {
@@ -629,6 +673,9 @@ const FrenteCaixa = () => {
           .from('hotel_stays')
           .update({ 
             status: 'check_out',
+            payment_status: 'pago',
+            payment_method: selectedPayment,
+            paid_at: now,
           } as any)
           .eq('id', item.sourceId);
       }
@@ -684,9 +731,9 @@ const FrenteCaixa = () => {
     ? activePlanForPet.total_baths - activePlanForPet.used_baths 
     : 0;
 
-  // Count pending payments
+  // Count pending payments - FINALIZED services waiting for payment are critical
   const totalPendingPayments = pendingPayments.length;
-  const finishedPendingPayments = pendingPayments.filter(p => p.serviceStatus === 'finalizado');
+  const finishedPendingPayments = pendingPayments.filter(p => p.serviceStatus === 'finalizado' || p.serviceStatus === 'pronto');
 
   return (
     <div className="p-8">

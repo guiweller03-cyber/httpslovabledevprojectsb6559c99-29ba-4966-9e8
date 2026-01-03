@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { useNavigate } from 'react-router-dom';
 import { 
   ClipboardList, 
   CheckCircle2, 
@@ -10,7 +11,8 @@ import {
   Clock,
   Dog,
   Scissors,
-  Droplets
+  Droplets,
+  DollarSign
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -91,6 +93,7 @@ const statusLabels: Record<string, string> = {
 
 export default function ServicosDoDia() {
   const { toast } = useToast();
+  const navigate = useNavigate();
   const printRef = useRef<HTMLDivElement>(null);
   
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -144,8 +147,8 @@ export default function ServicosDoDia() {
   };
 
   const handleMarkFinished = async (appointment: Appointment) => {
-    // Atualizar APENAS o status do serviço para finalizado
-    // O desconto do plano acontece na Frente de Caixa ao registrar o pagamento
+    // Atualizar o status do serviço para finalizado
+    // O pagamento continua PENDENTE até ser registrado no caixa
     const { error } = await supabase
       .from('bath_grooming_appointments')
       .update({ status: 'finalizado' })
@@ -165,11 +168,15 @@ export default function ServicosDoDia() {
     );
 
     const pet = getPet(appointment.pet_id);
+    const client = getClient(appointment.client_id);
     
     toast({
       title: "✅ Serviço Finalizado!",
-      description: `${pet?.name} está pronto. Lembre-se de registrar o pagamento na Frente de Caixa.`,
+      description: `${pet?.name} está pronto. Abrindo caixa para cobrança...`,
     });
+
+    // Redirecionar automaticamente para o caixa com cliente e pet pré-selecionados
+    navigate(`/caixa?clientId=${appointment.client_id}&petId=${appointment.pet_id}`);
   };
 
   const handlePetReady = async (appointment: Appointment) => {

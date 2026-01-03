@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 import { 
   Loader2, 
   Scissors, 
@@ -9,10 +10,12 @@ import {
   XCircle,
   TrendingUp,
   Calendar,
-  DollarSign
+  DollarSign,
+  AlertCircle
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { startOfMonth, endOfMonth, startOfDay, endOfDay, format, isWithinInterval } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -31,6 +34,10 @@ interface DashboardData {
   todayCompletedRevenue: number;
   todayFutureRevenue: number;
   
+  // Pagamentos pendentes (finalizados mas não pagos)
+  pendingPaymentsCount: number;
+  pendingPaymentsTotal: number;
+  
   // Mês
   monthGroomingTotal: number;
   monthGroomingCompleted: number;
@@ -39,6 +46,7 @@ interface DashboardData {
 }
 
 const Dashboard = () => {
+  const navigate = useNavigate();
   const [data, setData] = useState<DashboardData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -51,7 +59,7 @@ const Dashboard = () => {
       const todayEnd = endOfDay(now);
 
       // Fetch all data in parallel
-      const [{ data: groomingData }, { data: hotelData }] = await Promise.all([
+      const [{ data: groomingDataRaw }, { data: hotelDataRaw }] = await Promise.all([
         supabase
           .from('bath_grooming_appointments')
           .select('*')
@@ -63,6 +71,10 @@ const Dashboard = () => {
           .gte('check_in', monthStart.toISOString())
           .lte('check_in', monthEnd.toISOString()),
       ]);
+
+      // Cast to include payment_status (added via migration)
+      const groomingData = groomingDataRaw as Array<typeof groomingDataRaw[number] & { payment_status?: string }> | null;
+      const hotelData = hotelDataRaw as Array<typeof hotelDataRaw[number] & { payment_status?: string }> | null;
 
       // Today's data
       const todayGroomingList = groomingData?.filter(apt => {
@@ -94,26 +106,44 @@ const Dashboard = () => {
         todayGroomingList.filter(a => a.status === 'cancelado').length +
         todayHotelList.filter(s => s.status === 'cancelado').length;
 
-      // Faturamento HOJE
+      // Faturamento HOJE - serviços PAGOS
       const todayCompletedRevenue = 
-        todayGroomingList.filter(a => a.status === 'finalizado').reduce((sum, a) => sum + (a.price || 0), 0) +
-        todayHotelList.filter(s => s.status === 'check_out_realizado').reduce((sum, s) => sum + (s.total_price || 0), 0);
+        todayGroomingList.filter(a => a.payment_status === 'pago' || a.payment_status === 'isento').reduce((sum, a) => sum + (a.price || 0), 0) +
+        todayHotelList.filter(s => s.payment_status === 'pago' || s.payment_status === 'isento').reduce((sum, s) => sum + (s.total_price || 0), 0);
 
       const todayFutureRevenue = 
-        todayGroomingList.filter(a => a.status === 'agendado' || a.status === 'em_atendimento').reduce((sum, a) => sum + (a.price || 0), 0) +
-        todayHotelList.filter(s => s.status === 'reservado' || s.status === 'hospedado').reduce((sum, s) => sum + (s.total_price || 0), 0);
+        todayGroomingList.filter(a => a.status !== 'cancelado' && a.payment_status !== 'pago' && a.payment_status !== 'isento').reduce((sum, a) => sum + (a.price || 0), 0) +
+        todayHotelList.filter(s => s.status !== 'cancelado' && s.payment_status !== 'pago' && s.payment_status !== 'isento').reduce((sum, s) => sum + (s.total_price || 0), 0);
+
+      // PAGAMENTOS PENDENTES - serviços FINALIZADOS mas NÃO PAGOS (crítico!)
+      const pendingGrooming = groomingData?.filter(a => 
+        a.status === 'finalizado' && 
+        a.payment_status !== 'pago' && 
+        a.payment_status !== 'isento'
+      ) || [];
+      
+      const pendingHotel = hotelData?.filter(s => 
+        (s.status === 'check_out' || s.status === 'finalizado') && 
+        s.payment_status !== 'pago' && 
+        s.payment_status !== 'isento'
+      ) || [];
+
+      const pendingPaymentsCount = pendingGrooming.length + pendingHotel.length;
+      const pendingPaymentsTotal = 
+        pendingGrooming.reduce((sum, a) => sum + (a.price || 0), 0) +
+        pendingHotel.reduce((sum, s) => sum + (s.total_price || 0), 0);
 
       // Mês
       const monthGroomingActive = groomingData?.filter(a => a.status !== 'cancelado') || [];
       const monthGroomingTotal = monthGroomingActive.length;
-      const monthGroomingCompleted = groomingData?.filter(a => a.status === 'finalizado').length || 0;
+      const monthGroomingCompleted = groomingData?.filter(a => a.payment_status === 'pago' || a.payment_status === 'isento').length || 0;
 
       const monthHotelActive = hotelData?.filter(s => s.status !== 'cancelado') || [];
       const monthHotelTotal = monthHotelActive.length;
 
       const monthTotalRevenue = 
-        (groomingData?.filter(a => a.status === 'finalizado').reduce((sum, a) => sum + (a.price || 0), 0) || 0) +
-        (hotelData?.filter(s => s.status === 'check_out_realizado').reduce((sum, s) => sum + (s.total_price || 0), 0) || 0);
+        (groomingData?.filter(a => a.payment_status === 'pago' || a.payment_status === 'isento').reduce((sum, a) => sum + (a.price || 0), 0) || 0) +
+        (hotelData?.filter(s => s.payment_status === 'pago' || s.payment_status === 'isento').reduce((sum, s) => sum + (s.total_price || 0), 0) || 0);
 
       setData({
         todayGrooming,
@@ -123,6 +153,8 @@ const Dashboard = () => {
         todayCancelled,
         todayCompletedRevenue,
         todayFutureRevenue,
+        pendingPaymentsCount,
+        pendingPaymentsTotal,
         monthGroomingTotal,
         monthGroomingCompleted,
         monthHotelTotal,
@@ -181,6 +213,40 @@ const Dashboard = () => {
           {format(today, "EEEE, dd 'de' MMMM", { locale: ptBR })}
         </p>
       </motion.div>
+
+      {/* Alert for pending payments */}
+      {data.pendingPaymentsCount > 0 && (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="mb-6"
+        >
+          <Card className="border-2 border-red-300 bg-red-50/50 shadow-soft cursor-pointer hover:bg-red-50 transition-colors"
+                onClick={() => navigate('/caixa')}>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-red-500 rounded-full">
+                    <AlertCircle className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <p className="font-bold text-red-700 text-lg">
+                      🔴 {data.pendingPaymentsCount} Pagamento{data.pendingPaymentsCount !== 1 ? 's' : ''} Pendente{data.pendingPaymentsCount !== 1 ? 's' : ''}
+                    </p>
+                    <p className="text-red-600 text-sm">
+                      Total: R$ {data.pendingPaymentsTotal.toFixed(2)} aguardando recebimento
+                    </p>
+                  </div>
+                </div>
+                <Button className="bg-red-600 hover:bg-red-700">
+                  <DollarSign className="w-4 h-4 mr-2" />
+                  Ir para o Caixa
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
 
       {/* 4 Main Blocks */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
