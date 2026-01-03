@@ -1,162 +1,113 @@
 import { motion } from 'framer-motion';
-import { Calendar, Scissors, Home, DollarSign, MessageSquare, Bell } from 'lucide-react';
+import { Scissors, Home, Calendar, DollarSign, Loader2 } from 'lucide-react';
+import { useDashboardData } from '@/hooks/useDashboardData';
+import { OperationalCard } from '@/components/dashboard/OperationalCard';
+import { RevenueCard } from '@/components/dashboard/RevenueCard';
+import { TodaySchedule } from '@/components/dashboard/TodaySchedule';
 import { StatCard } from '@/components/dashboard/StatCard';
-import { AppointmentList } from '@/components/dashboard/AppointmentList';
-import { RecentMessages } from '@/components/dashboard/RecentMessages';
-import { 
-  mockDashboardStats, 
-  mockGroomingAppointments, 
-  mockConversations,
-  mockHotelBookings 
-} from '@/data/mockData';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { useToast } from '@/hooks/use-toast';
 
 const Dashboard = () => {
-  const { toast } = useToast();
-  const stats = mockDashboardStats;
-  const todayAppointments = mockGroomingAppointments.filter(
-    apt => apt.status !== 'finalizado'
-  ).slice(0, 4);
-  const activeHotelGuests = mockHotelBookings.filter(b => b.status === 'hospedado');
+  const data = useDashboardData();
 
-  const handlePetReady = (appointmentId: string) => {
-    toast({
-      title: "🎉 Pet Pronto!",
-      description: "Webhook disparado para o n8n. WhatsApp será enviado ao cliente.",
-    });
-  };
+  if (data.isLoading) {
+    return (
+      <div className="flex items-center justify-center h-full p-8">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
-    <div className="p-8">
+    <div className="p-8 space-y-6">
       {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="mb-8"
+        className="mb-2"
       >
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-display font-bold text-foreground">
-              Dashboard
-            </h1>
-            <p className="text-muted-foreground mt-1">
-              Bem-vindo ao seu painel de controle
-            </p>
-          </div>
-          <Button className="bg-gradient-primary hover:opacity-90">
-            <Bell className="w-4 h-4 mr-2" />
-            Notificações
-          </Button>
-        </div>
+        <h1 className="text-3xl font-display font-bold text-foreground">
+          Dashboard
+        </h1>
+        <p className="text-muted-foreground mt-1">
+          Visão geral da operação em tempo real
+        </p>
       </motion.div>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+      {/* Quick Stats - Overview */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
-          title="Atendimentos Hoje"
-          value={stats.todayAppointments}
-          trend={stats.appointmentsTrend}
-          icon={Scissors}
+          title="Banhos Agendados"
+          value={data.groomingScheduled + data.groomingInProgress}
+          icon={Calendar}
           variant="primary"
         />
         <StatCard
-          title="Hóspedes Ativos"
-          value={stats.activeHotelGuests}
-          trend={stats.hotelTrend}
-          icon={Home}
-          variant="secondary"
-        />
-        <StatCard
-          title="Mensagens Pendentes"
-          value={stats.pendingMessages}
-          trend={stats.messagesTrend}
-          icon={MessageSquare}
+          title="Em Atendimento"
+          value={data.groomingInProgress}
+          icon={Scissors}
           variant="warning"
         />
         <StatCard
-          title="Faturamento Mensal"
-          value={`R$ ${stats.monthlyRevenue.toLocaleString('pt-BR')}`}
-          trend={stats.revenueTrend}
-          icon={DollarSign}
+          title="Finalizados Hoje"
+          value={data.groomingCompleted}
+          icon={Scissors}
           variant="success"
+        />
+        <StatCard
+          title="Pets Hospedados"
+          value={data.hotelCurrentGuests}
+          icon={Home}
+          variant="secondary"
         />
       </div>
 
-      {/* Main Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Today's Appointments */}
-        <Card className="lg:col-span-2 border-0 shadow-soft">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-primary" />
-              Atendimentos de Hoje
-            </CardTitle>
-            <Button variant="ghost" size="sm" className="text-primary">
-              Ver todos
-            </Button>
-          </CardHeader>
-          <CardContent>
-            <AppointmentList 
-              appointments={todayAppointments}
-              onPetReady={handlePetReady}
-            />
-          </CardContent>
-        </Card>
+      {/* Financial Summary */}
+      <RevenueCard
+        completedRevenue={data.totalCompletedRevenue}
+        forecastRevenue={data.totalForecastRevenue}
+        title="Faturamento do Dia"
+      />
 
-        {/* Recent WhatsApp Messages */}
-        <Card className="border-0 shadow-soft">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="flex items-center gap-2">
-              <MessageSquare className="w-5 h-5 text-primary" />
-              WhatsApp
-            </CardTitle>
-            <span className="bg-secondary text-secondary-foreground text-xs font-bold px-2 py-1 rounded-full">
-              {mockConversations.reduce((acc, c) => acc + c.unreadCount, 0)} novas
-            </span>
-          </CardHeader>
-          <CardContent>
-            <RecentMessages conversations={mockConversations.slice(0, 3)} />
-          </CardContent>
-        </Card>
+      {/* Operational Status */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <OperationalCard
+          title="Banho & Tosa"
+          icon={Scissors}
+          variant="default"
+          items={[
+            { icon: '📅', label: 'Agendados', value: data.groomingScheduled },
+            { icon: '🔄', label: 'Em Atendimento', value: data.groomingInProgress, highlight: true },
+            { icon: '✅', label: 'Finalizados', value: data.groomingCompleted },
+            { icon: '📊', label: 'Total do Dia', value: data.groomingTotal },
+            { 
+              icon: '💰', 
+              label: 'Faturamento Previsto', 
+              value: `R$ ${data.groomingForecastRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
+              highlight: true 
+            },
+          ]}
+        />
+
+        <OperationalCard
+          title="Hotelzinho"
+          icon={Home}
+          variant="default"
+          items={[
+            { icon: '🏨', label: 'Hospedados Agora', value: data.hotelCurrentGuests, highlight: true },
+            { icon: '📆', label: 'Check-ins Futuros', value: data.hotelFutureCheckIns },
+            { icon: '🚪', label: 'Check-outs Previstos', value: data.hotelTodayCheckOuts },
+            { 
+              icon: '💰', 
+              label: 'Faturamento Previsto', 
+              value: `R$ ${data.hotelForecastRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
+              highlight: true 
+            },
+          ]}
+        />
       </div>
 
-      {/* Hotel Quick View */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3 }}
-        className="mt-6"
-      >
-        <Card className="border-0 shadow-soft bg-gradient-hero text-white">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-semibold mb-1">🏨 Hotelzinho</h3>
-                <p className="text-white/80">
-                  {activeHotelGuests.length} pet{activeHotelGuests.length !== 1 ? 's' : ''} hospedado{activeHotelGuests.length !== 1 ? 's' : ''} agora
-                </p>
-              </div>
-              <div className="flex -space-x-2">
-                {activeHotelGuests.slice(0, 3).map((guest, i) => (
-                  <div 
-                    key={guest.id}
-                    className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center text-lg border-2 border-white/30"
-                  >
-                    🐕
-                  </div>
-                ))}
-                {activeHotelGuests.length > 3 && (
-                  <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center text-sm font-bold border-2 border-white/30">
-                    +{activeHotelGuests.length - 3}
-                  </div>
-                )}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </motion.div>
+      {/* Today's Schedule */}
+      <TodaySchedule appointments={data.todayAppointments} />
     </div>
   );
 };
