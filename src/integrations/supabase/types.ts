@@ -24,6 +24,9 @@ export type Database = {
           id: string
           notes: string | null
           optional_services: string[] | null
+          paid_at: string | null
+          payment_method: string | null
+          payment_status: string | null
           pet_id: string
           price: number | null
           service_type: string
@@ -40,6 +43,9 @@ export type Database = {
           id?: string
           notes?: string | null
           optional_services?: string[] | null
+          paid_at?: string | null
+          payment_method?: string | null
+          payment_status?: string | null
           pet_id: string
           price?: number | null
           service_type: string
@@ -56,6 +62,9 @@ export type Database = {
           id?: string
           notes?: string | null
           optional_services?: string[] | null
+          paid_at?: string | null
+          payment_method?: string | null
+          payment_status?: string | null
           pet_id?: string
           price?: number | null
           service_type?: string
@@ -297,6 +306,9 @@ export type Database = {
           is_creche: boolean | null
           items_brought: string[] | null
           notes: string | null
+          paid_at: string | null
+          payment_method: string | null
+          payment_status: string | null
           pet_id: string
           status: string | null
           total_price: number | null
@@ -313,6 +325,9 @@ export type Database = {
           is_creche?: boolean | null
           items_brought?: string[] | null
           notes?: string | null
+          paid_at?: string | null
+          payment_method?: string | null
+          payment_status?: string | null
           pet_id: string
           status?: string | null
           total_price?: number | null
@@ -329,6 +344,9 @@ export type Database = {
           is_creche?: boolean | null
           items_brought?: string[] | null
           notes?: string | null
+          paid_at?: string | null
+          payment_method?: string | null
+          payment_status?: string | null
           pet_id?: string
           status?: string | null
           total_price?: number | null

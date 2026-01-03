@@ -1,15 +1,15 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { UserX, Calendar, ShoppingBag, Send, Filter, CheckSquare, Square } from 'lucide-react';
+import { UserX, Calendar, ShoppingBag, Send, Filter, CheckSquare, Square, RefreshCw, Download, Phone, Dog } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
-import { mockClients } from '@/data/mockData';
-import { Client } from '@/types';
-import { useToast } from '@/hooks/use-toast';
-import { formatDistanceToNow, differenceInDays } from 'date-fns';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
+import { differenceInDays, format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 const inactivityPeriods = [
@@ -19,25 +19,142 @@ const inactivityPeriods = [
   { value: '90', label: '90 dias' },
 ];
 
+interface ClientDB {
+  id: string;
+  name: string;
+  whatsapp: string;
+  email: string | null;
+  created_at: string | null;
+  last_purchase: string | null;
+  last_interaction: string | null;
+}
+
+interface PetDB {
+  id: string;
+  name: string;
+  client_id: string;
+}
+
+interface InactiveClient {
+  id: string;
+  name: string;
+  whatsapp: string;
+  email: string | null;
+  lastPurchase: Date | null;
+  daysSinceLastPurchase: number;
+  pets: string[];
+}
+
 const Inativos = () => {
-  const { toast } = useToast();
+  const [clients, setClients] = useState<ClientDB[]>([]);
+  const [pets, setPets] = useState<PetDB[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [period, setPeriod] = useState('30');
   const [selectedClients, setSelectedClients] = useState<string[]>([]);
 
-  // Filter inactive clients based on period
-  const inactiveClients = mockClients.filter(client => {
-    const lastActivity = client.lastInteraction && client.lastPurchase
-      ? new Date(Math.max(
-          new Date(client.lastInteraction).getTime(),
-          new Date(client.lastPurchase).getTime()
-        ))
-      : client.lastInteraction || client.lastPurchase;
-    
-    if (!lastActivity) return true;
-    
-    const daysSinceActivity = differenceInDays(new Date(), lastActivity);
-    return daysSinceActivity >= parseInt(period);
-  });
+  // Fetch data from database
+  const fetchData = async () => {
+    setIsLoading(true);
+    try {
+      // Fetch clients with their last payment dates from appointments and hotel stays
+      const { data: clientsData, error: clientsError } = await supabase
+        .from('clients')
+        .select('*')
+        .order('name');
+
+      if (clientsError) throw clientsError;
+
+      // Fetch all paid appointments
+      const { data: appointmentsData } = await supabase
+        .from('bath_grooming_appointments')
+        .select('client_id, paid_at')
+        .eq('payment_status', 'pago')
+        .not('paid_at', 'is', null);
+
+      // Fetch all paid hotel stays
+      const { data: hotelData } = await supabase
+        .from('hotel_stays')
+        .select('client_id, paid_at')
+        .eq('payment_status', 'pago')
+        .not('paid_at', 'is', null);
+
+      // Fetch pets
+      const { data: petsData, error: petsError } = await supabase
+        .from('pets')
+        .select('id, name, client_id');
+
+      if (petsError) throw petsError;
+
+      // Calculate last purchase for each client
+      const clientLastPurchase: Record<string, Date> = {};
+      
+      (appointmentsData || []).forEach(apt => {
+        if (apt.paid_at) {
+          const date = new Date(apt.paid_at);
+          if (!clientLastPurchase[apt.client_id] || date > clientLastPurchase[apt.client_id]) {
+            clientLastPurchase[apt.client_id] = date;
+          }
+        }
+      });
+
+      (hotelData || []).forEach(stay => {
+        if (stay.paid_at) {
+          const date = new Date(stay.paid_at);
+          if (!clientLastPurchase[stay.client_id] || date > clientLastPurchase[stay.client_id]) {
+            clientLastPurchase[stay.client_id] = date;
+          }
+        }
+      });
+
+      // Update clients with calculated last_purchase
+      const updatedClients = (clientsData || []).map(client => ({
+        ...client,
+        last_purchase: clientLastPurchase[client.id]?.toISOString() || client.last_purchase,
+      }));
+
+      setClients(updatedClients);
+      setPets(petsData || []);
+    } catch (error) {
+      console.error('Erro ao carregar dados:', error);
+      toast.error('Erro ao carregar clientes');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  // Calculate inactive clients
+  const inactiveClients = useMemo((): InactiveClient[] => {
+    const today = new Date();
+    const periodDays = parseInt(period);
+
+    return clients
+      .map(client => {
+        const lastPurchase = client.last_purchase ? new Date(client.last_purchase) : null;
+        const daysSince = lastPurchase ? differenceInDays(today, lastPurchase) : Infinity;
+        const clientPets = pets.filter(p => p.client_id === client.id).map(p => p.name);
+
+        return {
+          id: client.id,
+          name: client.name,
+          whatsapp: client.whatsapp,
+          email: client.email,
+          lastPurchase,
+          daysSinceLastPurchase: daysSince === Infinity ? -1 : daysSince,
+          pets: clientPets,
+        };
+      })
+      .filter(client => client.daysSinceLastPurchase >= periodDays || client.daysSinceLastPurchase === -1)
+      .sort((a, b) => {
+        // Never purchased first, then by days since last purchase
+        if (a.daysSinceLastPurchase === -1) return -1;
+        if (b.daysSinceLastPurchase === -1) return 1;
+        return b.daysSinceLastPurchase - a.daysSinceLastPurchase;
+      });
+  }, [clients, pets, period]);
 
   const toggleClient = (clientId: string) => {
     setSelectedClients(prev =>
@@ -55,194 +172,292 @@ const Inativos = () => {
     }
   };
 
+  // Export data for n8n
+  const handleExportForN8n = () => {
+    const dataToExport = selectedClients.length > 0 
+      ? inactiveClients.filter(c => selectedClients.includes(c.id))
+      : inactiveClients;
+
+    const exportData = dataToExport.map(c => ({
+      nome_tutor: c.name,
+      telefone_tutor: c.whatsapp,
+      email: c.email,
+      nome_pet: c.pets.join(', ') || 'Nenhum pet cadastrado',
+      ultima_data_compra: c.lastPurchase ? format(c.lastPurchase, 'yyyy-MM-dd') : null,
+      dias_sem_compra: c.daysSinceLastPurchase === -1 ? 'Nunca comprou' : c.daysSinceLastPurchase,
+    }));
+    
+    console.log('📤 Dados para n8n:', JSON.stringify(exportData, null, 2));
+    
+    navigator.clipboard.writeText(JSON.stringify(exportData, null, 2));
+    toast.success(`${exportData.length} clientes copiados para a área de transferência`);
+  };
+
+  // Send campaign to n8n
   const handleSendCampaign = () => {
     if (selectedClients.length === 0) {
-      toast({
-        title: "Nenhum cliente selecionado",
-        description: "Selecione pelo menos um cliente para enviar a campanha.",
-        variant: "destructive",
-      });
+      toast.error('Selecione pelo menos um cliente');
       return;
     }
 
-    toast({
-      title: "📤 Campanha Enviada!",
-      description: `Webhook disparado para o n8n com ${selectedClients.length} cliente(s). O n8n controlará o envio das mensagens.`,
-    });
+    const dataToSend = inactiveClients
+      .filter(c => selectedClients.includes(c.id))
+      .map(c => ({
+        nome_tutor: c.name,
+        telefone_tutor: c.whatsapp,
+        email: c.email,
+        nome_pet: c.pets.join(', ') || 'Nenhum pet cadastrado',
+        ultima_data_compra: c.lastPurchase ? format(c.lastPurchase, 'yyyy-MM-dd') : null,
+        dias_sem_compra: c.daysSinceLastPurchase === -1 ? 'Nunca comprou' : c.daysSinceLastPurchase,
+      }));
+
+    const webhookPayload = {
+      event: 'campanha_reativacao',
+      data: dataToSend,
+      total: dataToSend.length,
+      timestamp: new Date().toISOString(),
+    };
+
+    console.log('📤 Webhook Campanha Reativação:', webhookPayload);
+    toast.success(`Dados de ${selectedClients.length} cliente(s) prontos para n8n`);
     setSelectedClients([]);
   };
 
   return (
-    <div className="p-8">
+    <div className="p-8 space-y-6">
       {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="mb-8"
+        className="flex items-center justify-between"
       >
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-display font-bold text-foreground flex items-center gap-3">
-              <UserX className="w-8 h-8 text-primary" />
-              Clientes Inativos
-            </h1>
-            <p className="text-muted-foreground mt-1">
-              Reengaje clientes que não interagem há algum tempo
-            </p>
+        <div>
+          <h1 className="text-3xl font-display font-bold text-foreground flex items-center gap-3">
+            <UserX className="w-8 h-8 text-primary" />
+            Clientes Inativos
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            Clientes sem compras registradas — dados prontos para reativação via n8n
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <Filter className="w-4 h-4 text-muted-foreground" />
+            <Select value={period} onValueChange={setPeriod}>
+              <SelectTrigger className="w-32">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {inactivityPeriods.map(p => (
+                  <SelectItem key={p.value} value={p.value}>
+                    {p.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <Filter className="w-4 h-4 text-muted-foreground" />
-              <Select value={period} onValueChange={setPeriod}>
-                <SelectTrigger className="w-32">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {inactivityPeriods.map(p => (
-                    <SelectItem key={p.value} value={p.value}>
-                      {p.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <Button 
-              className="bg-gradient-primary hover:opacity-90"
-              onClick={handleSendCampaign}
-              disabled={selectedClients.length === 0}
-            >
-              <Send className="w-4 h-4 mr-2" />
-              Enviar Campanha ({selectedClients.length})
-            </Button>
-          </div>
+          <Button variant="outline" onClick={fetchData} disabled={isLoading}>
+            <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+            Atualizar
+          </Button>
+          <Button variant="outline" onClick={handleExportForN8n}>
+            <Download className="w-4 h-4 mr-2" />
+            Exportar
+          </Button>
+          <Button 
+            onClick={handleSendCampaign}
+            disabled={selectedClients.length === 0}
+          >
+            <Send className="w-4 h-4 mr-2" />
+            Campanha ({selectedClients.length})
+          </Button>
         </div>
       </motion.div>
 
-      {/* Info Card */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.1 }}
-        className="mb-6"
-      >
-        <Card className="border-0 shadow-soft bg-gradient-hero text-white">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-white/80 text-sm">Clientes inativos há mais de {period} dias</p>
-                <p className="text-3xl font-display font-bold mt-1">
-                  {inactiveClients.length} cliente{inactiveClients.length !== 1 ? 's' : ''}
-                </p>
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
+          <Card className="bg-card border-border">
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-4">
+                <div className="p-3 rounded-xl bg-primary/10">
+                  <UserX className="w-6 h-6 text-primary" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-foreground">{inactiveClients.length}</p>
+                  <p className="text-sm text-muted-foreground">Inativos há +{period} dias</p>
+                </div>
               </div>
-              <div className="text-right">
-                <p className="text-white/80 text-sm">O n8n será responsável por:</p>
-                <ul className="text-sm mt-2 space-y-1">
-                  <li>• Controlar tempo entre mensagens</li>
-                  <li>• Variar textos</li>
-                  <li>• Respeitar limites da API</li>
-                </ul>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+          <Card className="bg-card border-border">
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-4">
+                <div className="p-3 rounded-xl bg-yellow-500/10">
+                  <ShoppingBag className="w-6 h-6 text-yellow-600" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-foreground">
+                    {inactiveClients.filter(c => c.daysSinceLastPurchase === -1).length}
+                  </p>
+                  <p className="text-sm text-muted-foreground">Nunca compraram</p>
+                </div>
               </div>
-            </div>
-          </CardContent>
-        </Card>
-      </motion.div>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
+          <Card className="bg-card border-border">
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-4">
+                <div className="p-3 rounded-xl bg-green-500/10">
+                  <CheckSquare className="w-6 h-6 text-green-600" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-foreground">{selectedClients.length}</p>
+                  <p className="text-sm text-muted-foreground">Selecionados</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      </div>
 
       {/* Client List */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.2 }}
-      >
-        <Card className="border-0 shadow-soft">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Lista de Inativos</CardTitle>
-            <Button variant="ghost" size="sm" onClick={toggleAll}>
-              {selectedClients.length === inactiveClients.length ? (
-                <>
-                  <CheckSquare className="w-4 h-4 mr-2" />
-                  Desmarcar Todos
-                </>
-              ) : (
-                <>
-                  <Square className="w-4 h-4 mr-2" />
-                  Selecionar Todos
-                </>
-              )}
-            </Button>
-          </CardHeader>
-          <CardContent>
-            {inactiveClients.length === 0 ? (
-              <div className="text-center py-12">
-                <UserX className="w-16 h-16 text-muted-foreground/30 mx-auto mb-4" />
-                <p className="text-muted-foreground">
-                  Nenhum cliente inativo encontrado para este período! 🎉
-                </p>
-              </div>
+      <Card className="bg-card border-border">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="flex items-center gap-2">
+            <UserX className="w-5 h-5" />
+            Lista de Inativos ({inactiveClients.length})
+          </CardTitle>
+          <Button variant="ghost" size="sm" onClick={toggleAll}>
+            {selectedClients.length === inactiveClients.length ? (
+              <>
+                <CheckSquare className="w-4 h-4 mr-2" />
+                Desmarcar Todos
+              </>
             ) : (
-              <div className="space-y-3">
-                {inactiveClients.map((client, index) => (
-                  <motion.div
-                    key={client.id}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: index * 0.05 }}
-                    className={`p-4 rounded-xl border cursor-pointer transition-all ${
-                      selectedClients.includes(client.id)
-                        ? 'border-primary bg-primary/5'
-                        : 'border-border hover:border-primary/30'
-                    }`}
-                    onClick={() => toggleClient(client.id)}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-4">
+              <>
+                <Square className="w-4 h-4 mr-2" />
+                Selecionar Todos
+              </>
+            )}
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="text-center py-8 text-muted-foreground">
+              Carregando...
+            </div>
+          ) : inactiveClients.length === 0 ? (
+            <div className="text-center py-12">
+              <UserX className="w-16 h-16 text-muted-foreground/30 mx-auto mb-4" />
+              <p className="text-muted-foreground">
+                Nenhum cliente inativo encontrado para este período! 🎉
+              </p>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-border overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/50">
+                    <TableHead className="w-12"></TableHead>
+                    <TableHead>Nome</TableHead>
+                    <TableHead>WhatsApp</TableHead>
+                    <TableHead>Pets</TableHead>
+                    <TableHead>Última Compra</TableHead>
+                    <TableHead>Dias Sem Compra</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {inactiveClients.map((client) => (
+                    <TableRow 
+                      key={client.id} 
+                      className={`hover:bg-muted/30 cursor-pointer ${
+                        selectedClients.includes(client.id) ? 'bg-primary/5' : ''
+                      }`}
+                      onClick={() => toggleClient(client.id)}
+                    >
+                      <TableCell>
                         <Checkbox
                           checked={selectedClients.includes(client.id)}
                           onCheckedChange={() => toggleClient(client.id)}
                         />
-                        <div className="w-10 h-10 bg-muted rounded-full flex items-center justify-center text-muted-foreground font-bold">
-                          {client.name.charAt(0)}
-                        </div>
-                        <div>
-                          <h4 className="font-semibold">{client.name}</h4>
-                          <p className="text-sm text-muted-foreground">{client.whatsapp}</p>
-                        </div>
-                      </div>
-                      
-                      <div className="flex items-center gap-6 text-sm">
-                        <div className="text-center">
-                          <div className="flex items-center gap-1 text-muted-foreground">
-                            <Calendar className="w-3 h-3" />
-                            <span>Última interação</span>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 bg-muted rounded-full flex items-center justify-center text-muted-foreground font-bold text-sm">
+                            {client.name.charAt(0)}
                           </div>
-                          <p className="font-medium">
-                            {client.lastInteraction
-                              ? formatDistanceToNow(client.lastInteraction, { addSuffix: true, locale: ptBR })
-                              : 'Nunca'}
-                          </p>
+                          <span className="font-medium">{client.name}</span>
                         </div>
-                        <div className="text-center">
-                          <div className="flex items-center gap-1 text-muted-foreground">
-                            <ShoppingBag className="w-3 h-3" />
-                            <span>Última compra</span>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                          <Phone className="w-4 h-4" />
+                          {client.whatsapp}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {client.pets.length > 0 ? (
+                          <div className="flex items-center gap-2">
+                            <Dog className="w-4 h-4 text-muted-foreground" />
+                            <span>{client.pets.join(', ')}</span>
                           </div>
-                          <p className="font-medium">
-                            {client.lastPurchase
-                              ? formatDistanceToNow(client.lastPurchase, { addSuffix: true, locale: ptBR })
-                              : 'Nunca'}
-                          </p>
-                        </div>
-                        <Badge variant="outline" className="border-warning text-warning">
-                          {differenceInDays(new Date(), client.lastInteraction || client.lastPurchase || client.createdAt)} dias
-                        </Badge>
-                      </div>
-                    </div>
-                  </motion.div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </motion.div>
+                        ) : (
+                          <span className="text-muted-foreground text-sm">Nenhum</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {client.lastPurchase ? (
+                          format(client.lastPurchase, 'dd/MM/yyyy', { locale: ptBR })
+                        ) : (
+                          <span className="text-muted-foreground">Nunca</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {client.daysSinceLastPurchase === -1 ? (
+                          <Badge variant="outline" className="bg-yellow-500/10 text-yellow-600 border-yellow-500/30">
+                            Nunca comprou
+                          </Badge>
+                        ) : (
+                          <Badge variant={client.daysSinceLastPurchase > 60 ? 'destructive' : 'outline'}>
+                            {client.daysSinceLastPurchase} dias
+                          </Badge>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Info Card */}
+      <Card className="bg-muted/30 border-border">
+        <CardContent className="pt-6">
+          <div className="flex items-start gap-4">
+            <div className="p-2 rounded-lg bg-primary/10">
+              <Send className="w-5 h-5 text-primary" />
+            </div>
+            <div>
+              <h4 className="font-semibold mb-1">Integração com n8n</h4>
+              <p className="text-sm text-muted-foreground">
+                Os dados desta tela estão prontos para consumo via n8n + OpenAI. 
+                Selecione os clientes desejados e clique em "Campanha" para disparar o webhook, 
+                ou use "Exportar" para copiar os dados estruturados. O sistema <strong>não envia mensagens</strong> — 
+                isso é responsabilidade do fluxo n8n externo.
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 };

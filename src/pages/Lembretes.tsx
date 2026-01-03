@@ -1,118 +1,202 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { Bell, Filter, Send, CheckCircle, AlertTriangle, Syringe, Bug, Phone, Calendar, User, Dog } from 'lucide-react';
+import { Bell, Filter, Send, CheckCircle, AlertTriangle, Syringe, Bug, Phone, Calendar, User, Dog, Pill, RefreshCw, Download } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
-import { format, differenceInDays, addDays } from 'date-fns';
+import { format, differenceInDays, addMonths, addDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { mockClients, mockPets } from '@/data/mockData';
+import { supabase } from '@/integrations/supabase/client';
 
 // Types
-export type ReminderType = 'vacina' | 'antipulgas';
-export type ReminderStatus = 'pendente' | 'avisado' | 'resolvido';
-export type ImpactedService = 'hotelzinho' | 'creche';
+export type ReminderType = 'vacina' | 'antipulgas' | 'vermifugo';
+export type ReminderStatus = 'valido' | 'a_vencer' | 'vencido';
 
 export interface HealthReminder {
   id: string;
-  clientId: string;
   petId: string;
+  petName: string;
+  petBreed: string | null;
+  clientId: string;
+  clientName: string;
+  clientWhatsapp: string;
   type: ReminderType;
+  description: string;
   expirationDate: Date;
   daysRemaining: number;
-  impactedServices: ImpactedService[];
   status: ReminderStatus;
-  lastAction?: Date;
-  createdAt: Date;
 }
 
-// Mock data for health info (would come from Pet in real system)
-interface PetHealthInfo {
-  petId: string;
-  vaccineExpiration?: Date;
-  fleaTreatmentExpiration?: Date;
+interface PetHealthDB {
+  id: string;
+  pet_id: string;
+  vaccine_name: string | null;
+  vaccine_valid_until: string | null;
+  vaccine_type: string | null;
+  vaccine_applied_at: string | null;
+  vaccine_validity_months: number | null;
+  antipulgas_valid_until: string | null;
+  antiparasitic_type: string | null;
+  antiparasitic_applied_at: string | null;
+  antiparasitic_validity_days: number | null;
+  vermifuge_type: string | null;
+  vermifuge_applied_at: string | null;
+  vermifuge_valid_until: string | null;
+  vermifuge_validity_days: number | null;
 }
 
-// Generate mock health data
-const mockHealthData: PetHealthInfo[] = mockPets.map((pet, index) => ({
-  petId: pet.id,
-  vaccineExpiration: addDays(new Date(), [5, 12, 25, 45, -3, 8, 60][index % 7]),
-  fleaTreatmentExpiration: addDays(new Date(), [3, 18, 35, 7, -5, 22, 50][index % 7]),
-}));
+interface PetDB {
+  id: string;
+  name: string;
+  breed: string | null;
+  client_id: string;
+}
 
-// Generate reminders based on health data
-const generateReminders = (healthData: PetHealthInfo[], warningDays: number = 30): HealthReminder[] => {
-  const reminders: HealthReminder[] = [];
-  const today = new Date();
-
-  healthData.forEach((health) => {
-    const pet = mockPets.find(p => p.id === health.petId);
-    if (!pet) return;
-
-    // Check vaccine
-    if (health.vaccineExpiration) {
-      const daysRemaining = differenceInDays(health.vaccineExpiration, today);
-      if (daysRemaining <= warningDays) {
-        reminders.push({
-          id: `vaccine-${health.petId}`,
-          clientId: pet.clientId,
-          petId: health.petId,
-          type: 'vacina',
-          expirationDate: health.vaccineExpiration,
-          daysRemaining,
-          impactedServices: ['hotelzinho', 'creche'],
-          status: daysRemaining < 0 ? 'pendente' : 'pendente',
-          createdAt: new Date(),
-        });
-      }
-    }
-
-    // Check flea treatment
-    if (health.fleaTreatmentExpiration) {
-      const daysRemaining = differenceInDays(health.fleaTreatmentExpiration, today);
-      if (daysRemaining <= warningDays) {
-        reminders.push({
-          id: `flea-${health.petId}`,
-          clientId: pet.clientId,
-          petId: health.petId,
-          type: 'antipulgas',
-          expirationDate: health.fleaTreatmentExpiration,
-          daysRemaining,
-          impactedServices: ['hotelzinho', 'creche'],
-          status: daysRemaining < 0 ? 'pendente' : 'pendente',
-          createdAt: new Date(),
-        });
-      }
-    }
-  });
-
-  return reminders.sort((a, b) => a.daysRemaining - b.daysRemaining);
-};
+interface ClientDB {
+  id: string;
+  name: string;
+  whatsapp: string;
+}
 
 const Lembretes = () => {
-  const [reminders, setReminders] = useState<HealthReminder[]>(() => 
-    generateReminders(mockHealthData, 30)
-  );
+  const [reminders, setReminders] = useState<HealthReminder[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [clients, setClients] = useState<ClientDB[]>([]);
+  const [pets, setPets] = useState<PetDB[]>([]);
+  const [petHealthRecords, setPetHealthRecords] = useState<PetHealthDB[]>([]);
   
   // Filters
   const [typeFilter, setTypeFilter] = useState<string>('all');
-  const [daysFilter, setDaysFilter] = useState<string>('all');
-  const [serviceFilter, setServiceFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [daysFilter, setDaysFilter] = useState<string>('30');
 
-  // Helper functions
-  const getClient = (clientId: string) => mockClients.find(c => c.id === clientId);
-  const getPet = (petId: string) => mockPets.find(p => p.id === petId);
+  // Fetch data from database
+  const fetchData = async () => {
+    setIsLoading(true);
+    try {
+      const [clientsRes, petsRes, healthRes] = await Promise.all([
+        supabase.from('clients').select('id, name, whatsapp'),
+        supabase.from('pets').select('id, name, breed, client_id'),
+        supabase.from('pet_health').select('*'),
+      ]);
+
+      if (clientsRes.error) throw clientsRes.error;
+      if (petsRes.error) throw petsRes.error;
+      if (healthRes.error) throw healthRes.error;
+
+      setClients(clientsRes.data || []);
+      setPets(petsRes.data || []);
+      setPetHealthRecords((healthRes.data || []) as unknown as PetHealthDB[]);
+    } catch (error) {
+      console.error('Erro ao carregar dados:', error);
+      toast.error('Erro ao carregar dados de saúde');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  // Generate reminders from health records
+  useEffect(() => {
+    const today = new Date();
+    const generatedReminders: HealthReminder[] = [];
+
+    petHealthRecords.forEach(health => {
+      const pet = pets.find(p => p.id === health.pet_id);
+      if (!pet) return;
+      
+      const client = clients.find(c => c.id === pet.client_id);
+      if (!client) return;
+
+      // Calculate vaccine reminder
+      if (health.vaccine_valid_until) {
+        const expDate = new Date(health.vaccine_valid_until);
+        const daysRemaining = differenceInDays(expDate, today);
+        const status: ReminderStatus = daysRemaining < 0 ? 'vencido' : daysRemaining <= 30 ? 'a_vencer' : 'valido';
+        
+        if (status !== 'valido') {
+          generatedReminders.push({
+            id: `vaccine-${health.id}`,
+            petId: pet.id,
+            petName: pet.name,
+            petBreed: pet.breed,
+            clientId: client.id,
+            clientName: client.name,
+            clientWhatsapp: client.whatsapp,
+            type: 'vacina',
+            description: health.vaccine_name || health.vaccine_type || 'Vacina',
+            expirationDate: expDate,
+            daysRemaining,
+            status,
+          });
+        }
+      }
+
+      // Calculate antipulgas reminder
+      if (health.antipulgas_valid_until) {
+        const expDate = new Date(health.antipulgas_valid_until);
+        const daysRemaining = differenceInDays(expDate, today);
+        const status: ReminderStatus = daysRemaining < 0 ? 'vencido' : daysRemaining <= 30 ? 'a_vencer' : 'valido';
+        
+        if (status !== 'valido') {
+          generatedReminders.push({
+            id: `antipulgas-${health.id}`,
+            petId: pet.id,
+            petName: pet.name,
+            petBreed: pet.breed,
+            clientId: client.id,
+            clientName: client.name,
+            clientWhatsapp: client.whatsapp,
+            type: 'antipulgas',
+            description: health.antiparasitic_type || 'Antipulgas',
+            expirationDate: expDate,
+            daysRemaining,
+            status,
+          });
+        }
+      }
+
+      // Calculate vermifuge reminder
+      if (health.vermifuge_valid_until) {
+        const expDate = new Date(health.vermifuge_valid_until);
+        const daysRemaining = differenceInDays(expDate, today);
+        const status: ReminderStatus = daysRemaining < 0 ? 'vencido' : daysRemaining <= 30 ? 'a_vencer' : 'valido';
+        
+        if (status !== 'valido') {
+          generatedReminders.push({
+            id: `vermifuge-${health.id}`,
+            petId: pet.id,
+            petName: pet.name,
+            petBreed: pet.breed,
+            clientId: client.id,
+            clientName: client.name,
+            clientWhatsapp: client.whatsapp,
+            type: 'vermifugo',
+            description: health.vermifuge_type || 'Vermífugo',
+            expirationDate: expDate,
+            daysRemaining,
+            status,
+          });
+        }
+      }
+    });
+
+    // Sort by days remaining (most urgent first)
+    generatedReminders.sort((a, b) => a.daysRemaining - b.daysRemaining);
+    setReminders(generatedReminders);
+  }, [petHealthRecords, pets, clients]);
 
   // Filtered reminders
   const filteredReminders = useMemo(() => {
     return reminders.filter(reminder => {
       if (typeFilter !== 'all' && reminder.type !== typeFilter) return false;
       if (statusFilter !== 'all' && reminder.status !== statusFilter) return false;
-      if (serviceFilter !== 'all' && !reminder.impactedServices.includes(serviceFilter as ImpactedService)) return false;
       
       if (daysFilter !== 'all') {
         const days = parseInt(daysFilter);
@@ -121,90 +205,80 @@ const Lembretes = () => {
       
       return true;
     });
-  }, [reminders, typeFilter, daysFilter, serviceFilter, statusFilter]);
+  }, [reminders, typeFilter, statusFilter, daysFilter]);
 
   // Stats
   const stats = useMemo(() => ({
     total: reminders.length,
     urgent: reminders.filter(r => r.daysRemaining <= 7).length,
-    pending: reminders.filter(r => r.status === 'pendente').length,
-    expired: reminders.filter(r => r.daysRemaining < 0).length,
+    aVencer: reminders.filter(r => r.status === 'a_vencer').length,
+    vencidos: reminders.filter(r => r.status === 'vencido').length,
   }), [reminders]);
 
-  // Send to n8n webhook
+  // Export data for n8n
+  const handleExportForN8n = () => {
+    const exportData = filteredReminders.map(r => ({
+      nome_tutor: r.clientName,
+      telefone_tutor: r.clientWhatsapp,
+      nome_pet: r.petName,
+      raca_pet: r.petBreed,
+      tipo: r.type,
+      descricao: r.description,
+      data_vencimento: format(r.expirationDate, 'yyyy-MM-dd'),
+      dias_para_vencer: r.daysRemaining,
+      status: r.status,
+    }));
+    
+    console.log('📤 Dados para n8n:', JSON.stringify(exportData, null, 2));
+    
+    // Copy to clipboard
+    navigator.clipboard.writeText(JSON.stringify(exportData, null, 2));
+    toast.success(`${exportData.length} lembretes copiados para a área de transferência`);
+  };
+
+  // Send single reminder to n8n webhook
   const handleSendToN8n = async (reminder: HealthReminder) => {
-    const client = getClient(reminder.clientId);
-    const pet = getPet(reminder.petId);
-
-    if (!client || !pet) {
-      toast.error('Dados incompletos');
-      return;
-    }
-
     const webhookPayload = {
       event: 'lembrete_sanitario',
       data: {
-        cliente: {
-          id: client.id,
-          nome: client.name,
-          whatsapp: client.whatsapp,
-        },
-        pet: {
-          id: pet.id,
-          nome: pet.name,
-          raca: pet.breed,
-          porte: pet.size,
-        },
-        lembrete: {
-          tipo: reminder.type,
-          dataVencimento: reminder.expirationDate.toISOString(),
-          diasRestantes: reminder.daysRemaining,
-          servicosAfetados: reminder.impactedServices,
-          status: reminder.status,
-        },
+        nome_tutor: reminder.clientName,
+        telefone_tutor: reminder.clientWhatsapp,
+        nome_pet: reminder.petName,
+        raca_pet: reminder.petBreed,
+        tipo: reminder.type,
+        descricao: reminder.description,
+        data_vencimento: format(reminder.expirationDate, 'yyyy-MM-dd'),
+        dias_para_vencer: reminder.daysRemaining,
+        status: reminder.status,
       },
       timestamp: new Date().toISOString(),
     };
 
     console.log('📤 Webhook Lembrete Sanitário:', webhookPayload);
-
-    // Simulate webhook call
-    try {
-      // In production: await fetch(N8N_WEBHOOK_URL, { method: 'POST', body: JSON.stringify(webhookPayload) })
-      
-      setReminders(prev => prev.map(r => 
-        r.id === reminder.id 
-          ? { ...r, status: 'avisado' as ReminderStatus, lastAction: new Date() }
-          : r
-      ));
-      
-      toast.success(`Lembrete enviado para n8n`, {
-        description: `${client.name} - ${pet.name} (${reminder.type})`,
-      });
-    } catch (error) {
-      toast.error('Erro ao enviar webhook');
-    }
-  };
-
-  // Mark as resolved
-  const handleMarkResolved = (reminderId: string) => {
-    setReminders(prev => prev.map(r => 
-      r.id === reminderId 
-        ? { ...r, status: 'resolvido' as ReminderStatus, lastAction: new Date() }
-        : r
-    ));
-    toast.success('Lembrete marcado como resolvido');
+    toast.success(`Dados enviados para n8n: ${reminder.clientName} - ${reminder.petName}`);
   };
 
   // Status badge
   const getStatusBadge = (status: ReminderStatus) => {
     switch (status) {
-      case 'pendente':
-        return <Badge variant="outline" className="bg-yellow-500/10 text-yellow-600 border-yellow-500/30">Pendente</Badge>;
-      case 'avisado':
-        return <Badge variant="outline" className="bg-blue-500/10 text-blue-600 border-blue-500/30">Avisado</Badge>;
-      case 'resolvido':
-        return <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/30">Resolvido</Badge>;
+      case 'valido':
+        return <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/30">Válido</Badge>;
+      case 'a_vencer':
+        return <Badge variant="outline" className="bg-yellow-500/10 text-yellow-600 border-yellow-500/30">A Vencer</Badge>;
+      case 'vencido':
+        return <Badge variant="destructive">Vencido</Badge>;
+    }
+  };
+
+  // Type icon
+  const getTypeIcon = (type: ReminderType) => {
+    switch (type) {
+      case 'vacina':
+        return <Syringe className="w-4 h-4 text-blue-500" />;
+      case 'antipulgas':
+        return <Bug className="w-4 h-4 text-orange-500" />;
+      case 'vermifugo':
+        return <Pill className="w-4 h-4 text-purple-500" />;
     }
   };
 
@@ -219,11 +293,11 @@ const Lembretes = () => {
     if (days <= 15) {
       return <Badge variant="outline" className="bg-orange-500/10 text-orange-600 border-orange-500/30">{days} dias</Badge>;
     }
-    return <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/30">{days} dias</Badge>;
+    return <Badge variant="outline" className="bg-yellow-500/10 text-yellow-600 border-yellow-500/30">{days} dias</Badge>;
   };
 
   return (
-    <div className="space-y-6">
+    <div className="p-8 space-y-6">
       {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: -20 }}
@@ -233,11 +307,21 @@ const Lembretes = () => {
         <div>
           <h1 className="text-3xl font-display font-bold text-foreground flex items-center gap-3">
             <Bell className="w-8 h-8 text-primary" />
-            Lembretes Sanitários
+            Central de Lembretes
           </h1>
           <p className="text-muted-foreground mt-1">
-            Controle de vacinas e antipulgas para Hotelzinho e Creche
+            Vacinas, antipulgas e vermífugos a vencer ou vencidos — dados prontos para n8n
           </p>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={fetchData} disabled={isLoading}>
+            <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+            Atualizar
+          </Button>
+          <Button onClick={handleExportForN8n} disabled={filteredReminders.length === 0}>
+            <Download className="w-4 h-4 mr-2" />
+            Exportar ({filteredReminders.length})
+          </Button>
         </div>
       </motion.div>
 
@@ -283,8 +367,8 @@ const Lembretes = () => {
                   <Calendar className="w-6 h-6 text-yellow-600" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-foreground">{stats.pending}</p>
-                  <p className="text-sm text-muted-foreground">Pendentes</p>
+                  <p className="text-2xl font-bold text-foreground">{stats.aVencer}</p>
+                  <p className="text-sm text-muted-foreground">A Vencer</p>
                 </div>
               </div>
             </CardContent>
@@ -299,7 +383,7 @@ const Lembretes = () => {
                   <AlertTriangle className="w-6 h-6 text-red-600" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-foreground">{stats.expired}</p>
+                  <p className="text-2xl font-bold text-foreground">{stats.vencidos}</p>
                   <p className="text-sm text-muted-foreground">Vencidos</p>
                 </div>
               </div>
@@ -317,7 +401,7 @@ const Lembretes = () => {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className="text-sm font-medium text-muted-foreground mb-2 block">Tipo</label>
               <Select value={typeFilter} onValueChange={setTypeFilter}>
@@ -328,6 +412,21 @@ const Lembretes = () => {
                   <SelectItem value="all">Todos</SelectItem>
                   <SelectItem value="vacina">Vacina</SelectItem>
                   <SelectItem value="antipulgas">Antipulgas</SelectItem>
+                  <SelectItem value="vermifugo">Vermífugo</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium text-muted-foreground mb-2 block">Status</label>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Todos" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="a_vencer">A Vencer</SelectItem>
+                  <SelectItem value="vencido">Vencido</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -347,35 +446,6 @@ const Lembretes = () => {
                 </SelectContent>
               </Select>
             </div>
-
-            <div>
-              <label className="text-sm font-medium text-muted-foreground mb-2 block">Serviço Impactado</label>
-              <Select value={serviceFilter} onValueChange={setServiceFilter}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Todos" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos</SelectItem>
-                  <SelectItem value="hotelzinho">Hotelzinho</SelectItem>
-                  <SelectItem value="creche">Creche</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div>
-              <label className="text-sm font-medium text-muted-foreground mb-2 block">Status</label>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Todos" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos</SelectItem>
-                  <SelectItem value="pendente">Pendente</SelectItem>
-                  <SelectItem value="avisado">Avisado</SelectItem>
-                  <SelectItem value="resolvido">Resolvido</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
           </div>
         </CardContent>
       </Card>
@@ -389,124 +459,89 @@ const Lembretes = () => {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="rounded-lg border border-border overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-muted/50">
-                  <TableHead>Cliente</TableHead>
-                  <TableHead>Pet</TableHead>
-                  <TableHead>Tipo</TableHead>
-                  <TableHead>Vence em</TableHead>
-                  <TableHead>Dias</TableHead>
-                  <TableHead>Serviços</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Última Ação</TableHead>
-                  <TableHead className="text-right">Ações</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredReminders.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
-                      Nenhum lembrete encontrado
-                    </TableCell>
+          {isLoading ? (
+            <div className="text-center py-8 text-muted-foreground">
+              Carregando...
+            </div>
+          ) : filteredReminders.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <Bell className="w-12 h-12 mx-auto mb-4 opacity-20" />
+              <p>Nenhum lembrete encontrado</p>
+              <p className="text-sm mt-1">Cadastre dados sanitários nos pets para gerar lembretes</p>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-border overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/50">
+                    <TableHead>Tutor</TableHead>
+                    <TableHead>Pet</TableHead>
+                    <TableHead>Tipo</TableHead>
+                    <TableHead>Descrição</TableHead>
+                    <TableHead>Vencimento</TableHead>
+                    <TableHead>Dias</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
-                ) : (
-                  filteredReminders.map((reminder) => {
-                    const client = getClient(reminder.clientId);
-                    const pet = getPet(reminder.petId);
-
-                    return (
-                      <TableRow key={reminder.id} className="hover:bg-muted/30">
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <User className="w-4 h-4 text-muted-foreground" />
-                            <div>
-                              <p className="font-medium">{client?.name || 'N/A'}</p>
-                              <p className="text-xs text-muted-foreground flex items-center gap-1">
-                                <Phone className="w-3 h-3" />
-                                {client?.whatsapp || 'N/A'}
-                              </p>
-                            </div>
+                </TableHeader>
+                <TableBody>
+                  {filteredReminders.map((reminder) => (
+                    <TableRow key={reminder.id} className="hover:bg-muted/30">
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <User className="w-4 h-4 text-muted-foreground" />
+                          <div>
+                            <p className="font-medium">{reminder.clientName}</p>
+                            <p className="text-xs text-muted-foreground flex items-center gap-1">
+                              <Phone className="w-3 h-3" />
+                              {reminder.clientWhatsapp}
+                            </p>
                           </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Dog className="w-4 h-4 text-muted-foreground" />
-                            <div>
-                              <p className="font-medium">{pet?.name || 'N/A'}</p>
-                              <p className="text-xs text-muted-foreground">{pet?.breed}</p>
-                            </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Dog className="w-4 h-4 text-muted-foreground" />
+                          <div>
+                            <p className="font-medium">{reminder.petName}</p>
+                            <p className="text-xs text-muted-foreground">{reminder.petBreed || 'N/A'}</p>
                           </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            {reminder.type === 'vacina' ? (
-                              <Syringe className="w-4 h-4 text-blue-500" />
-                            ) : (
-                              <Bug className="w-4 h-4 text-orange-500" />
-                            )}
-                            <span className="capitalize">{reminder.type}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          {format(reminder.expirationDate, "dd/MM/yyyy", { locale: ptBR })}
-                        </TableCell>
-                        <TableCell>
-                          {getDaysRemainingBadge(reminder.daysRemaining)}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex gap-1">
-                            {reminder.impactedServices.map(service => (
-                              <Badge key={service} variant="secondary" className="text-xs capitalize">
-                                {service}
-                              </Badge>
-                            ))}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          {getStatusBadge(reminder.status)}
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {reminder.lastAction 
-                            ? format(reminder.lastAction, "dd/MM HH:mm", { locale: ptBR })
-                            : '-'
-                          }
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center justify-end gap-2">
-                            {reminder.status !== 'resolvido' && (
-                              <>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => handleSendToN8n(reminder)}
-                                  className="gap-1"
-                                  disabled={reminder.status === 'avisado'}
-                                >
-                                  <Send className="w-3 h-3" />
-                                  n8n
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => handleMarkResolved(reminder.id)}
-                                  className="gap-1 text-green-600 hover:text-green-700"
-                                >
-                                  <CheckCircle className="w-3 h-3" />
-                                  Resolver
-                                </Button>
-                              </>
-                            )}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })
-                )}
-              </TableBody>
-            </Table>
-          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          {getTypeIcon(reminder.type)}
+                          <span className="capitalize">{reminder.type}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-sm">{reminder.description}</span>
+                      </TableCell>
+                      <TableCell>
+                        {format(reminder.expirationDate, 'dd/MM/yyyy', { locale: ptBR })}
+                      </TableCell>
+                      <TableCell>
+                        {getDaysRemainingBadge(reminder.daysRemaining)}
+                      </TableCell>
+                      <TableCell>
+                        {getStatusBadge(reminder.status)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleSendToN8n(reminder)}
+                          title="Enviar para n8n"
+                        >
+                          <Send className="w-4 h-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -514,14 +549,17 @@ const Lembretes = () => {
       <Card className="bg-muted/30 border-border">
         <CardContent className="pt-6">
           <div className="flex items-start gap-4">
-            <AlertTriangle className="w-6 h-6 text-yellow-600 flex-shrink-0 mt-1" />
-            <div className="space-y-2">
-              <h4 className="font-semibold text-foreground">Regras de Bloqueio</h4>
-              <ul className="text-sm text-muted-foreground space-y-1">
-                <li>✅ <strong>Banho & Tosa:</strong> Nunca bloqueia - apenas exibe alerta visual</li>
-                <li>🚫 <strong>Hotelzinho / Creche:</strong> Bloqueia agendamento se vacina ou antipulgas estiverem vencidos</li>
-                <li>📧 <strong>Mensagens:</strong> Todas as comunicações são enviadas exclusivamente via n8n + Z-API</li>
-              </ul>
+            <div className="p-2 rounded-lg bg-primary/10">
+              <AlertTriangle className="w-5 h-5 text-primary" />
+            </div>
+            <div>
+              <h4 className="font-semibold mb-1">Integração com n8n</h4>
+              <p className="text-sm text-muted-foreground">
+                Os dados desta tela estão prontos para consumo via n8n + OpenAI. 
+                Use o botão "Exportar" para copiar os dados estruturados ou clique no ícone de envio 
+                para disparar um webhook individual. O sistema <strong>não gera mensagens</strong> — 
+                isso é responsabilidade do fluxo externo.
+              </p>
             </div>
           </div>
         </CardContent>

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Users, Plus, Search, Phone, Mail, Dog, Cat, Edit, Trash2, Scissors, Droplets } from 'lucide-react';
+import { Users, Plus, Search, Phone, Mail, Dog, Cat, Edit, Trash2, Scissors, Droplets, Syringe, Bug, Pill } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -13,6 +13,7 @@ import { toast } from '@/hooks/use-toast';
 import { mockPets, getBreedsBySpecies } from '@/data/mockData';
 import { Pet, FurType, Species, PetSize, PreferredService, GroomingType, BreedInfo } from '@/types';
 import { supabase } from '@/integrations/supabase/client';
+import { addMonths, addDays, format } from 'date-fns';
 
 const furTypeLabels: Record<FurType, string> = {
   curto: 'Curto',
@@ -181,6 +182,16 @@ const Clientes = () => {
     weight: '',
     preferredService: '' as PreferredService | '',
     groomingType: '' as GroomingType | '',
+    // Health fields (optional)
+    vaccineType: '',
+    vaccineAppliedAt: '',
+    vaccineValidityMonths: '12',
+    antiparasiticType: '',
+    antiparasiticAppliedAt: '',
+    antiparasiticValidityDays: '30',
+    vermifugeType: '',
+    vermifugeAppliedAt: '',
+    vermifugeValidityDays: '90',
   });
   
   const [availableBreeds, setAvailableBreeds] = useState<BreedInfo[]>([]);
@@ -227,6 +238,15 @@ const Clientes = () => {
       weight: '',
       preferredService: '',
       groomingType: '',
+      vaccineType: '',
+      vaccineAppliedAt: '',
+      vaccineValidityMonths: '12',
+      antiparasiticType: '',
+      antiparasiticAppliedAt: '',
+      antiparasiticValidityDays: '30',
+      vermifugeType: '',
+      vermifugeAppliedAt: '',
+      vermifugeValidityDays: '90',
     });
     setAvailableBreeds([]);
     setIsSRD(false);
@@ -248,43 +268,98 @@ const Clientes = () => {
 
     setIsLoading(true);
 
-    const { data, error } = await supabase
-      .from('pets')
-      .insert({
-        client_id: petForm.clientId,
-        name: petForm.name,
-        species: petForm.species,
-        breed: petForm.breed,
-        size: petForm.size,
-        coat_type: petForm.furType,
-        weight: petForm.weight ? parseFloat(petForm.weight) : null,
-        preferred_service: petForm.preferredService || null,
-        grooming_type: petForm.groomingType || null,
-      })
-      .select();
+    try {
+      // Insert pet
+      const { data: petData, error: petError } = await supabase
+        .from('pets')
+        .insert({
+          client_id: petForm.clientId,
+          name: petForm.name,
+          species: petForm.species,
+          breed: petForm.breed,
+          size: petForm.size,
+          coat_type: petForm.furType,
+          weight: petForm.weight ? parseFloat(petForm.weight) : null,
+          preferred_service: petForm.preferredService || null,
+          grooming_type: petForm.groomingType || null,
+        })
+        .select()
+        .single();
 
-    console.log("RESULTADO INSERT PET", data, error);
-    
-    setIsLoading(false);
+      if (petError) throw petError;
 
-    if (error) {
+      // If health data was provided, create pet_health record
+      const hasHealthData = petForm.vaccineType || petForm.antiparasiticType || petForm.vermifugeType;
+      
+      if (hasHealthData && petData) {
+        // Calculate expiration dates
+        let vaccineValidUntil = null;
+        let antipulgasValidUntil = null;
+        let vermifugeValidUntil = null;
+
+        if (petForm.vaccineType && petForm.vaccineAppliedAt) {
+          const appliedDate = new Date(petForm.vaccineAppliedAt);
+          const validityMonths = parseInt(petForm.vaccineValidityMonths) || 12;
+          vaccineValidUntil = format(addMonths(appliedDate, validityMonths), 'yyyy-MM-dd');
+        }
+
+        if (petForm.antiparasiticType && petForm.antiparasiticAppliedAt) {
+          const appliedDate = new Date(petForm.antiparasiticAppliedAt);
+          const validityDays = parseInt(petForm.antiparasiticValidityDays) || 30;
+          antipulgasValidUntil = format(addDays(appliedDate, validityDays), 'yyyy-MM-dd');
+        }
+
+        if (petForm.vermifugeType && petForm.vermifugeAppliedAt) {
+          const appliedDate = new Date(petForm.vermifugeAppliedAt);
+          const validityDays = parseInt(petForm.vermifugeValidityDays) || 90;
+          vermifugeValidUntil = format(addDays(appliedDate, validityDays), 'yyyy-MM-dd');
+        }
+
+        const healthData: Record<string, unknown> = {
+          pet_id: petData.id,
+          vaccine_name: petForm.vaccineType || null,
+          vaccine_type: petForm.vaccineType || null,
+          vaccine_applied_at: petForm.vaccineAppliedAt || null,
+          vaccine_validity_months: petForm.vaccineValidityMonths ? parseInt(petForm.vaccineValidityMonths) : null,
+          vaccine_valid_until: vaccineValidUntil,
+          antiparasitic_type: petForm.antiparasiticType || null,
+          antiparasitic_applied_at: petForm.antiparasiticAppliedAt || null,
+          antiparasitic_validity_days: petForm.antiparasiticValidityDays ? parseInt(petForm.antiparasiticValidityDays) : null,
+          antipulgas_valid_until: antipulgasValidUntil,
+          vermifuge_type: petForm.vermifugeType || null,
+          vermifuge_applied_at: petForm.vermifugeAppliedAt || null,
+          vermifuge_validity_days: petForm.vermifugeValidityDays ? parseInt(petForm.vermifugeValidityDays) : null,
+          vermifuge_valid_until: vermifugeValidUntil,
+        };
+
+        const { error: healthError } = await supabase
+          .from('pet_health')
+          .insert(healthData as any);
+
+        if (healthError) {
+          console.error('Erro ao salvar dados de saúde:', healthError);
+          // Don't fail the whole operation, just log
+        }
+      }
+
+      toast({
+        title: "Pet cadastrado!",
+        description: `${petForm.name} foi cadastrado com sucesso.`,
+      });
+
+      resetPetForm();
+      setIsPetDialogOpen(false);
+      fetchPets();
+    } catch (error: any) {
       console.error('Erro ao salvar pet:', error);
       toast({
         title: "Erro ao cadastrar",
         description: error.message || "Não foi possível salvar o pet.",
         variant: "destructive",
       });
-      return;
+    } finally {
+      setIsLoading(false);
     }
-
-    toast({
-      title: "Pet cadastrado!",
-      description: `${petForm.name} foi cadastrado com sucesso.`,
-    });
-
-    resetPetForm();
-    setIsPetDialogOpen(false);
-    fetchPets();
   };
 
   return (
@@ -322,9 +397,10 @@ const Clientes = () => {
                 </DialogHeader>
                 
                 <Tabs defaultValue="dados" className="mt-4">
-                  <TabsList className="grid w-full grid-cols-2">
+                  <TabsList className="grid w-full grid-cols-3">
                     <TabsTrigger value="dados">Dados do Pet</TabsTrigger>
-                    <TabsTrigger value="servicos">Preferências de Serviço</TabsTrigger>
+                    <TabsTrigger value="servicos">Serviços</TabsTrigger>
+                    <TabsTrigger value="saude">Saúde (opcional)</TabsTrigger>
                   </TabsList>
                   
                   {/* Tab: Dados do Pet */}
@@ -520,6 +596,121 @@ const Clientes = () => {
                         </p>
                       </motion.div>
                     )}
+                  </TabsContent>
+                  
+                  {/* Tab: Dados Sanitários (opcional) */}
+                  <TabsContent value="saude" className="space-y-4 mt-4">
+                    <div className="bg-muted/50 rounded-lg p-4 mb-4">
+                      <p className="text-sm text-muted-foreground">
+                        Campos <strong>opcionais</strong>. Se preenchidos, o sistema calculará automaticamente 
+                        os lembretes de vencimento. Se não preencher, o pet não aparecerá na central de lembretes.
+                      </p>
+                    </div>
+                    
+                    {/* Vacina */}
+                    <div className="border rounded-lg p-4 space-y-3">
+                      <Label className="flex items-center gap-2 text-base font-semibold">
+                        <Syringe className="w-4 h-4 text-blue-500" />
+                        Vacina
+                      </Label>
+                      <div className="grid grid-cols-3 gap-3">
+                        <div>
+                          <Label className="text-xs">Tipo de Vacina</Label>
+                          <Input 
+                            placeholder="Ex: V10, V8, Antirrábica"
+                            value={petForm.vaccineType}
+                            onChange={(e) => setPetForm(prev => ({ ...prev, vaccineType: e.target.value }))}
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs">Data Aplicação</Label>
+                          <Input 
+                            type="date"
+                            value={petForm.vaccineAppliedAt}
+                            onChange={(e) => setPetForm(prev => ({ ...prev, vaccineAppliedAt: e.target.value }))}
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs">Validade (meses)</Label>
+                          <Input 
+                            type="number"
+                            placeholder="12"
+                            value={petForm.vaccineValidityMonths}
+                            onChange={(e) => setPetForm(prev => ({ ...prev, vaccineValidityMonths: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Antipulgas */}
+                    <div className="border rounded-lg p-4 space-y-3">
+                      <Label className="flex items-center gap-2 text-base font-semibold">
+                        <Bug className="w-4 h-4 text-orange-500" />
+                        Antipulgas / Antiparasitário
+                      </Label>
+                      <div className="grid grid-cols-3 gap-3">
+                        <div>
+                          <Label className="text-xs">Tipo / Marca</Label>
+                          <Input 
+                            placeholder="Ex: Bravecto, Nexgard"
+                            value={petForm.antiparasiticType}
+                            onChange={(e) => setPetForm(prev => ({ ...prev, antiparasiticType: e.target.value }))}
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs">Data Aplicação</Label>
+                          <Input 
+                            type="date"
+                            value={petForm.antiparasiticAppliedAt}
+                            onChange={(e) => setPetForm(prev => ({ ...prev, antiparasiticAppliedAt: e.target.value }))}
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs">Validade (dias)</Label>
+                          <Input 
+                            type="number"
+                            placeholder="30"
+                            value={petForm.antiparasiticValidityDays}
+                            onChange={(e) => setPetForm(prev => ({ ...prev, antiparasiticValidityDays: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Vermífugo */}
+                    <div className="border rounded-lg p-4 space-y-3">
+                      <Label className="flex items-center gap-2 text-base font-semibold">
+                        <Pill className="w-4 h-4 text-purple-500" />
+                        Vermífugo
+                      </Label>
+                      <div className="grid grid-cols-3 gap-3">
+                        <div>
+                          <Label className="text-xs">Tipo / Marca</Label>
+                          <Input 
+                            placeholder="Ex: Drontal, Vermivet"
+                            value={petForm.vermifugeType}
+                            onChange={(e) => setPetForm(prev => ({ ...prev, vermifugeType: e.target.value }))}
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs">Data Aplicação</Label>
+                          <Input 
+                            type="date"
+                            value={petForm.vermifugeAppliedAt}
+                            onChange={(e) => setPetForm(prev => ({ ...prev, vermifugeAppliedAt: e.target.value }))}
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs">Validade (dias)</Label>
+                          <Input 
+                            type="number"
+                            placeholder="90"
+                            value={petForm.vermifugeValidityDays}
+                            onChange={(e) => setPetForm(prev => ({ ...prev, vermifugeValidityDays: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                    </div>
                   </TabsContent>
                 </Tabs>
                 
