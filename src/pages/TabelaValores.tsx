@@ -15,6 +15,7 @@ import { toast } from 'sonner';
 interface ServicePrice {
   id: string;
   breed: string;
+  size_category: 'pequeno' | 'medio' | 'grande';
   coat_type: 'curto' | 'medio' | 'longo';
   service_type: 'banho' | 'banho_tosa';
   price: number;
@@ -83,7 +84,7 @@ export default function TabelaValores() {
   const [editingRate, setEditingRate] = useState<HotelRate | null>(null);
 
   // Form data
-  const [priceForm, setPriceForm] = useState({ breed: '', coat_type: 'curto', service_type: 'banho', price: 0 });
+  const [priceForm, setPriceForm] = useState({ breed: '', size_category: 'pequeno', coat_type: 'curto', service_type: 'banho', price: 0 });
   const [addonForm, setAddonForm] = useState({ name: '', price: 0, service_type: '' });
   const [planForm, setPlanForm] = useState({ plan_name: '', total_baths: 1, price: 0, validity_days: 30 });
   const [rateForm, setRateForm] = useState({ size_category: 'pequeno', daily_rate: 0 });
@@ -179,7 +180,7 @@ export default function TabelaValores() {
   };
 
   const resetPriceForm = () => {
-    setPriceForm({ breed: '', coat_type: 'curto', service_type: 'banho', price: 0 });
+    setPriceForm({ breed: '', size_category: 'pequeno', coat_type: 'curto', service_type: 'banho', price: 0 });
     setEditingPrice(null);
   };
 
@@ -354,6 +355,22 @@ export default function TabelaValores() {
                       />
                     </div>
                     <div>
+                      <Label>Porte</Label>
+                      <Select
+                        value={priceForm.size_category}
+                        onValueChange={(v) => setPriceForm({ ...priceForm, size_category: v })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="pequeno">Pequeno</SelectItem>
+                          <SelectItem value="medio">Médio</SelectItem>
+                          <SelectItem value="grande">Grande</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
                       <Label>Tipo de Pelo</Label>
                       <Select
                         value={priceForm.coat_type}
@@ -404,6 +421,7 @@ export default function TabelaValores() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Raça</TableHead>
+                    <TableHead>Porte</TableHead>
                     <TableHead>Tipo de Pelo</TableHead>
                     <TableHead>Serviço</TableHead>
                     <TableHead>Preço</TableHead>
@@ -414,6 +432,7 @@ export default function TabelaValores() {
                   {servicePrices.map((item) => (
                     <TableRow key={item.id}>
                       <TableCell>{item.breed}</TableCell>
+                      <TableCell>{sizeLabels[item.size_category]}</TableCell>
                       <TableCell>{coatTypeLabels[item.coat_type]}</TableCell>
                       <TableCell>{serviceTypeLabels[item.service_type]}</TableCell>
                       <TableCell>R$ {item.price.toFixed(2)}</TableCell>
@@ -426,6 +445,7 @@ export default function TabelaValores() {
                               setEditingPrice(item);
                               setPriceForm({
                                 breed: item.breed,
+                                size_category: item.size_category,
                                 coat_type: item.coat_type,
                                 service_type: item.service_type,
                                 price: item.price
@@ -444,7 +464,7 @@ export default function TabelaValores() {
                   ))}
                   {servicePrices.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center text-muted-foreground">
+                      <TableCell colSpan={6} className="text-center text-muted-foreground">
                         Nenhum preço cadastrado
                       </TableCell>
                     </TableRow>
