@@ -3,17 +3,18 @@ import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import { motion } from 'framer-motion';
-import { Plus, Home } from 'lucide-react';
+import { Plus, Home, XCircle, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 
-type HotelStatus = 'reservado' | 'check_in' | 'hospedado' | 'check_out';
+type HotelStatus = 'reservado' | 'check_in' | 'hospedado' | 'check_out' | 'cancelado';
 
 interface ClientDB {
   id: string;
@@ -54,6 +55,7 @@ const statusColors: Record<HotelStatus, string> = {
   check_in: '#f59e0b',
   hospedado: '#22c55e',
   check_out: '#9ca3af',
+  cancelado: '#ef4444',
 };
 
 const sizeLabels: Record<string, string> = {
@@ -76,6 +78,7 @@ const Hotelzinho = () => {
   const [selectedBooking, setSelectedBooking] = useState<HotelStayDB | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isNewDialogOpen, setIsNewDialogOpen] = useState(false);
+  const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
   // Form state
@@ -189,20 +192,23 @@ const Hotelzinho = () => {
     }
   }, [formData.checkIn, formData.checkOut, dailyRate]);
 
-  const events = bookings.map(booking => {
-    const pet = pets.find(p => p.id === booking.pet_id);
-    const client = clients.find(c => c.id === booking.client_id);
-    
-    return {
-      id: booking.id,
-      title: `🐕 ${pet?.name || 'Pet'} (${client?.name || 'Cliente'})`,
-      start: booking.check_in,
-      end: booking.check_out,
-      backgroundColor: statusColors[(booking.status as HotelStatus) || 'reservado'],
-      borderColor: statusColors[(booking.status as HotelStatus) || 'reservado'],
-      extendedProps: booking,
-    };
-  });
+  // Filter out cancelled bookings from calendar
+  const events = bookings
+    .filter(booking => booking.status !== 'cancelado')
+    .map(booking => {
+      const pet = pets.find(p => p.id === booking.pet_id);
+      const client = clients.find(c => c.id === booking.client_id);
+      
+      return {
+        id: booking.id,
+        title: `🐕 ${pet?.name || 'Pet'} (${client?.name || 'Cliente'})`,
+        start: booking.check_in,
+        end: booking.check_out,
+        backgroundColor: statusColors[(booking.status as HotelStatus) || 'reservado'],
+        borderColor: statusColors[(booking.status as HotelStatus) || 'reservado'],
+        extendedProps: booking,
+      };
+    });
 
   const handleEventClick = (info: any) => {
     const booking = bookings.find(b => b.id === info.event.id);
@@ -241,6 +247,49 @@ const Hotelzinho = () => {
     });
 
     setSelectedBooking({ ...selectedBooking, status });
+  };
+
+  const handleCancelBooking = async () => {
+    if (!selectedBooking) return;
+
+    // Only allow cancellation if not checked out
+    if (selectedBooking.status === 'check_out') {
+      toast({
+        title: "Não permitido",
+        description: "Reservas finalizadas não podem ser canceladas.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const { error } = await supabase
+      .from('hotel_stays')
+      .update({ status: 'cancelado' })
+      .eq('id', selectedBooking.id);
+
+    if (error) {
+      toast({
+        title: "Erro",
+        description: "Não foi possível cancelar a reserva.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setBookings(prev => 
+      prev.map(b => 
+        b.id === selectedBooking.id ? { ...b, status: 'cancelado' } : b
+      )
+    );
+
+    toast({
+      title: "❌ Reserva Cancelada",
+      description: "A reserva foi cancelada com sucesso.",
+    });
+
+    setIsCancelDialogOpen(false);
+    setIsDialogOpen(false);
+    setSelectedBooking(null);
   };
 
   const handleSaveBooking = async () => {
@@ -308,6 +357,10 @@ const Hotelzinho = () => {
   const getClient = (clientId: string) => clients.find(c => c.id === clientId);
 
   const activeGuests = bookings.filter(b => b.status === 'hospedado');
+
+  const canCancel = selectedBooking && 
+    selectedBooking.status !== 'check_out' && 
+    selectedBooking.status !== 'cancelado';
 
   return (
     <div className="p-8">
@@ -586,24 +639,77 @@ const Hotelzinho = () => {
                 </div>
                 <div className="col-span-2">
                   <p className="text-sm text-muted-foreground">Status</p>
-                  <Select 
-                    value={selectedBooking.status || 'reservado'}
-                    onValueChange={(value) => handleStatusChange(value as HotelStatus)}
-                  >
-                    <SelectTrigger className="w-full mt-1">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="reservado">Reservado</SelectItem>
-                      <SelectItem value="check_in">Check-in</SelectItem>
-                      <SelectItem value="hospedado">Hospedado</SelectItem>
-                      <SelectItem value="check_out">Check-out</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  {selectedBooking.status === 'cancelado' ? (
+                    <Badge variant="destructive" className="mt-1">Cancelado</Badge>
+                  ) : (
+                    <Select 
+                      value={selectedBooking.status || 'reservado'}
+                      onValueChange={(value) => handleStatusChange(value as HotelStatus)}
+                    >
+                      <SelectTrigger className="w-full mt-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="reservado">Reservado</SelectItem>
+                        <SelectItem value="check_in">Check-in</SelectItem>
+                        <SelectItem value="hospedado">Hospedado</SelectItem>
+                        <SelectItem value="check_out">Check-out</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
               </div>
+
+              {/* Cancel Button */}
+              {canCancel && (
+                <Button 
+                  variant="destructive"
+                  className="w-full"
+                  onClick={() => setIsCancelDialogOpen(true)}
+                >
+                  <XCircle className="w-4 h-4 mr-2" />
+                  Cancelar Reserva
+                </Button>
+              )}
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Cancel Confirmation Dialog */}
+      <Dialog open={isCancelDialogOpen} onOpenChange={setIsCancelDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="w-5 h-5" />
+              Confirmar Cancelamento
+            </DialogTitle>
+            <DialogDescription>
+              Tem certeza que deseja cancelar esta reserva? Esta ação não pode ser desfeita.
+            </DialogDescription>
+          </DialogHeader>
+          {selectedBooking && (
+            <div className="py-4">
+              <Card className="bg-destructive/5 border-destructive/20">
+                <CardContent className="p-4">
+                  <p className="text-sm"><strong>Pet:</strong> {getPet(selectedBooking.pet_id)?.name}</p>
+                  <p className="text-sm"><strong>Cliente:</strong> {getClient(selectedBooking.client_id)?.name}</p>
+                  <p className="text-sm"><strong>Check-in:</strong> {new Date(selectedBooking.check_in).toLocaleDateString('pt-BR')}</p>
+                  <p className="text-sm"><strong>Check-out:</strong> {new Date(selectedBooking.check_out).toLocaleDateString('pt-BR')}</p>
+                  <p className="text-sm"><strong>Valor:</strong> R$ {selectedBooking.total_price?.toFixed(2)}</p>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsCancelDialogOpen(false)}>
+              Voltar
+            </Button>
+            <Button variant="destructive" onClick={handleCancelBooking}>
+              <XCircle className="w-4 h-4 mr-2" />
+              Confirmar Cancelamento
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
