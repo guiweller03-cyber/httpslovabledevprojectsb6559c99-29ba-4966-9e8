@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Users, Plus, Search, Phone, Mail, Dog, Cat, Edit, Trash2, Scissors, Droplets, Syringe, Bug, Pill } from 'lucide-react';
+import { Users, Plus, Search, Phone, Mail, Dog, Cat, Edit, Trash2, Scissors, Droplets } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -14,6 +14,7 @@ import { mockPets, getBreedsBySpecies } from '@/data/mockData';
 import { Pet, FurType, Species, PetSize, PreferredService, GroomingType, BreedInfo } from '@/types';
 import { supabase } from '@/integrations/supabase/client';
 import { addMonths, addDays, format } from 'date-fns';
+import { VaccineBooklet } from '@/components/pets/VaccineBooklet';
 
 const furTypeLabels: Record<FurType, string> = {
   curto: 'Curto',
@@ -495,7 +496,7 @@ const Clientes = () => {
                   <TabsList className="grid w-full grid-cols-3">
                     <TabsTrigger value="dados">Dados do Pet</TabsTrigger>
                     <TabsTrigger value="servicos">Serviços</TabsTrigger>
-                    <TabsTrigger value="saude">Saúde (opcional)</TabsTrigger>
+                    <TabsTrigger value="caderneta">🩺 Caderneta</TabsTrigger>
                   </TabsList>
                   
                   {/* Tab: Dados do Pet */}
@@ -693,119 +694,17 @@ const Clientes = () => {
                     )}
                   </TabsContent>
                   
-                  {/* Tab: Dados Sanitários (opcional) */}
-                  <TabsContent value="saude" className="space-y-4 mt-4">
-                    <div className="bg-muted/50 rounded-lg p-4 mb-4">
-                      <p className="text-sm text-muted-foreground">
-                        Campos <strong>opcionais</strong>. Se preenchidos, o sistema calculará automaticamente 
-                        os lembretes de vencimento. Se não preencher, o pet não aparecerá na central de lembretes.
-                      </p>
-                    </div>
-                    
-                    {/* Vacina */}
-                    <div className="border rounded-lg p-4 space-y-3">
-                      <Label className="flex items-center gap-2 text-base font-semibold">
-                        <Syringe className="w-4 h-4 text-blue-500" />
-                        Vacina
-                      </Label>
-                      <div className="grid grid-cols-3 gap-3">
-                        <div>
-                          <Label className="text-xs">Tipo de Vacina</Label>
-                          <Input 
-                            placeholder="Ex: V10, V8, Antirrábica"
-                            value={petForm.vaccineType}
-                            onChange={(e) => setPetForm(prev => ({ ...prev, vaccineType: e.target.value }))}
-                          />
-                        </div>
-                        <div>
-                          <Label className="text-xs">Data Aplicação</Label>
-                          <Input 
-                            type="date"
-                            value={petForm.vaccineAppliedAt}
-                            onChange={(e) => setPetForm(prev => ({ ...prev, vaccineAppliedAt: e.target.value }))}
-                          />
-                        </div>
-                        <div>
-                          <Label className="text-xs">Validade (meses)</Label>
-                          <Input 
-                            type="number"
-                            placeholder="12"
-                            value={petForm.vaccineValidityMonths}
-                            onChange={(e) => setPetForm(prev => ({ ...prev, vaccineValidityMonths: e.target.value }))}
-                          />
-                        </div>
+                  {/* Tab: Caderneta de Vacinação */}
+                  <TabsContent value="caderneta" className="space-y-4 mt-4">
+                    {editingPetId ? (
+                      <VaccineBooklet petId={editingPetId} petName={petForm.name} />
+                    ) : (
+                      <div className="bg-muted/50 rounded-lg p-6 text-center">
+                        <p className="text-sm text-muted-foreground">
+                          A caderneta de vacinação estará disponível após salvar o pet pela primeira vez.
+                        </p>
                       </div>
-                    </div>
-                    
-                    {/* Antipulgas */}
-                    <div className="border rounded-lg p-4 space-y-3">
-                      <Label className="flex items-center gap-2 text-base font-semibold">
-                        <Bug className="w-4 h-4 text-orange-500" />
-                        Antipulgas / Antiparasitário
-                      </Label>
-                      <div className="grid grid-cols-3 gap-3">
-                        <div>
-                          <Label className="text-xs">Tipo / Marca</Label>
-                          <Input 
-                            placeholder="Ex: Bravecto, Nexgard"
-                            value={petForm.antiparasiticType}
-                            onChange={(e) => setPetForm(prev => ({ ...prev, antiparasiticType: e.target.value }))}
-                          />
-                        </div>
-                        <div>
-                          <Label className="text-xs">Data Aplicação</Label>
-                          <Input 
-                            type="date"
-                            value={petForm.antiparasiticAppliedAt}
-                            onChange={(e) => setPetForm(prev => ({ ...prev, antiparasiticAppliedAt: e.target.value }))}
-                          />
-                        </div>
-                        <div>
-                          <Label className="text-xs">Validade (dias)</Label>
-                          <Input 
-                            type="number"
-                            placeholder="30"
-                            value={petForm.antiparasiticValidityDays}
-                            onChange={(e) => setPetForm(prev => ({ ...prev, antiparasiticValidityDays: e.target.value }))}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                    
-                    {/* Vermífugo */}
-                    <div className="border rounded-lg p-4 space-y-3">
-                      <Label className="flex items-center gap-2 text-base font-semibold">
-                        <Pill className="w-4 h-4 text-purple-500" />
-                        Vermífugo
-                      </Label>
-                      <div className="grid grid-cols-3 gap-3">
-                        <div>
-                          <Label className="text-xs">Tipo / Marca</Label>
-                          <Input 
-                            placeholder="Ex: Drontal, Vermivet"
-                            value={petForm.vermifugeType}
-                            onChange={(e) => setPetForm(prev => ({ ...prev, vermifugeType: e.target.value }))}
-                          />
-                        </div>
-                        <div>
-                          <Label className="text-xs">Data Aplicação</Label>
-                          <Input 
-                            type="date"
-                            value={petForm.vermifugeAppliedAt}
-                            onChange={(e) => setPetForm(prev => ({ ...prev, vermifugeAppliedAt: e.target.value }))}
-                          />
-                        </div>
-                        <div>
-                          <Label className="text-xs">Validade (dias)</Label>
-                          <Input 
-                            type="number"
-                            placeholder="90"
-                            value={petForm.vermifugeValidityDays}
-                            onChange={(e) => setPetForm(prev => ({ ...prev, vermifugeValidityDays: e.target.value }))}
-                          />
-                        </div>
-                      </div>
-                    </div>
+                    )}
                   </TabsContent>
                 </Tabs>
                 
