@@ -65,6 +65,33 @@ export type Database = {
         }
         Relationships: []
       }
+      bath_plans: {
+        Row: {
+          created_at: string | null
+          id: string
+          plan_name: string
+          price: number
+          total_baths: number
+          validity_days: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          plan_name: string
+          price: number
+          total_baths: number
+          validity_days?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          plan_name?: string
+          price?: number
+          total_baths?: number
+          validity_days?: number | null
+        }
+        Relationships: []
+      }
       clients: {
         Row: {
           created_at: string | null
@@ -167,6 +194,27 @@ export type Database = {
           resolved_at?: string | null
           sent_to_n8n_at?: string | null
           status?: string | null
+        }
+        Relationships: []
+      }
+      hotel_rates: {
+        Row: {
+          created_at: string | null
+          daily_rate: number
+          id: string
+          size_category: string
+        }
+        Insert: {
+          created_at?: string | null
+          daily_rate: number
+          id?: string
+          size_category: string
+        }
+        Update: {
+          created_at?: string | null
+          daily_rate?: number
+          id?: string
+          size_category?: string
         }
         Relationships: []
       }
@@ -303,6 +351,63 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      service_addons: {
+        Row: {
+          active: boolean | null
+          created_at: string | null
+          id: string
+          name: string
+          price: number
+          service_type: string | null
+        }
+        Insert: {
+          active?: boolean | null
+          created_at?: string | null
+          id?: string
+          name: string
+          price: number
+          service_type?: string | null
+        }
+        Update: {
+          active?: boolean | null
+          created_at?: string | null
+          id?: string
+          name?: string
+          price?: number
+          service_type?: string | null
+        }
+        Relationships: []
+      }
+      service_prices: {
+        Row: {
+          breed: string
+          coat_type: string
+          created_at: string | null
+          id: string
+          price: number
+          service_type: string
+          size_category: string
+        }
+        Insert: {
+          breed: string
+          coat_type: string
+          created_at?: string | null
+          id?: string
+          price: number
+          service_type: string
+          size_category: string
+        }
+        Update: {
+          breed?: string
+          coat_type?: string
+          created_at?: string | null
+          id?: string
+          price?: number
+          service_type?: string
+          size_category?: string
+        }
+        Relationships: []
       }
     }
     Views: {

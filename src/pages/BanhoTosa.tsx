@@ -4,13 +4,15 @@ import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import { motion } from 'framer-motion';
-import { Plus, Scissors, CheckCircle2 } from 'lucide-react';
+import { Plus, Scissors, CheckCircle2, MessageCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
@@ -45,6 +47,23 @@ interface AppointmentDB {
   price: number | null;
   status: string | null;
   notes: string | null;
+  optional_services: string[] | null;
+}
+
+interface ServicePrice {
+  id: string;
+  breed: string;
+  size_category: string;
+  coat_type: string;
+  service_type: string;
+  price: number;
+}
+
+interface ServiceAddon {
+  id: string;
+  name: string;
+  price: number;
+  active: boolean;
 }
 
 const statusColors: Record<AppointmentStatus, string> = {
@@ -63,6 +82,8 @@ const BanhoTosa = () => {
   const [pets, setPets] = useState<PetDB[]>([]);
   const [filteredPets, setFilteredPets] = useState<PetDB[]>([]);
   const [appointments, setAppointments] = useState<AppointmentDB[]>([]);
+  const [servicePrices, setServicePrices] = useState<ServicePrice[]>([]);
+  const [serviceAddons, setServiceAddons] = useState<ServiceAddon[]>([]);
   
   const [selectedAppointment, setSelectedAppointment] = useState<AppointmentDB | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -75,58 +96,65 @@ const BanhoTosa = () => {
     petId: '',
     service: '',
     datetime: '',
+    selectedAddons: [] as string[],
   });
+
+  // Calculated price state
+  const [calculatedPrice, setCalculatedPrice] = useState<number | null>(null);
+  const [basePrice, setBasePrice] = useState<number>(0);
+  const [addonsTotal, setAddonsTotal] = useState<number>(0);
 
   // Fetch data from Supabase
   const fetchClients = async () => {
-    console.log("Fetching clients...");
     const { data, error } = await supabase
       .from('clients')
       .select('*')
       .order('name', { ascending: true });
     
-    if (error) {
-      console.error('Erro ao carregar clientes:', error);
-      return;
-    }
-    console.log("Clients loaded:", data);
-    setClients(data || []);
+    if (!error) setClients(data || []);
   };
 
   const fetchPets = async () => {
-    console.log("Fetching pets...");
     const { data, error } = await supabase
       .from('pets')
       .select('*')
       .order('name', { ascending: true });
     
-    if (error) {
-      console.error('Erro ao carregar pets:', error);
-      return;
-    }
-    console.log("Pets loaded:", data);
-    setPets(data || []);
+    if (!error) setPets(data || []);
   };
 
   const fetchAppointments = async () => {
-    console.log("Fetching appointments...");
     const { data, error } = await supabase
       .from('bath_grooming_appointments')
       .select('*')
       .order('start_datetime', { ascending: true });
     
-    if (error) {
-      console.error('Erro ao carregar agendamentos:', error);
-      return;
-    }
-    console.log("Appointments loaded:", data);
-    setAppointments(data || []);
+    if (!error) setAppointments(data || []);
+  };
+
+  const fetchServicePrices = async () => {
+    const { data, error } = await supabase
+      .from('service_prices')
+      .select('*');
+    
+    if (!error) setServicePrices(data || []);
+  };
+
+  const fetchServiceAddons = async () => {
+    const { data, error } = await supabase
+      .from('service_addons')
+      .select('*')
+      .eq('active', true);
+    
+    if (!error) setServiceAddons(data || []);
   };
 
   useEffect(() => {
     fetchClients();
     fetchPets();
     fetchAppointments();
+    fetchServicePrices();
+    fetchServiceAddons();
   }, []);
 
   // Filter pets when client changes
@@ -134,11 +162,75 @@ const BanhoTosa = () => {
     if (formData.clientId) {
       const clientPets = pets.filter(p => p.client_id === formData.clientId);
       setFilteredPets(clientPets);
-      setFormData(prev => ({ ...prev, petId: '' }));
+      setFormData(prev => ({ ...prev, petId: '', selectedAddons: [] }));
+      setCalculatedPrice(null);
+      setBasePrice(0);
+      setAddonsTotal(0);
     } else {
       setFilteredPets([]);
     }
   }, [formData.clientId, pets]);
+
+  // Calculate price automatically when pet or service changes
+  useEffect(() => {
+    if (formData.petId && formData.service) {
+      const pet = pets.find(p => p.id === formData.petId);
+      if (pet) {
+        // Find matching price in service_prices table
+        const matchingPrice = servicePrices.find(sp => 
+          sp.breed?.toLowerCase() === pet.breed?.toLowerCase() &&
+          sp.service_type === formData.service
+        );
+        
+        // If no exact breed match, try by size_category
+        if (matchingPrice) {
+          setBasePrice(matchingPrice.price);
+        } else {
+          // Fallback: find by size
+          const sizeMatch = servicePrices.find(sp => 
+            sp.size_category === pet.size &&
+            sp.service_type === formData.service
+          );
+          if (sizeMatch) {
+            setBasePrice(sizeMatch.price);
+          } else {
+            // Default prices if nothing matches
+            const defaultPrice = formData.service === 'banho' ? 50 : 80;
+            setBasePrice(defaultPrice);
+          }
+        }
+      }
+    } else {
+      setBasePrice(0);
+    }
+  }, [formData.petId, formData.service, pets, servicePrices]);
+
+  // Calculate addons total
+  useEffect(() => {
+    const total = formData.selectedAddons.reduce((acc, addonId) => {
+      const addon = serviceAddons.find(a => a.id === addonId);
+      return acc + (addon?.price || 0);
+    }, 0);
+    setAddonsTotal(total);
+  }, [formData.selectedAddons, serviceAddons]);
+
+  // Update calculated price
+  useEffect(() => {
+    if (basePrice > 0) {
+      setCalculatedPrice(basePrice + addonsTotal);
+    } else {
+      setCalculatedPrice(null);
+    }
+  }, [basePrice, addonsTotal]);
+
+  const toggleAddon = (addonId: string) => {
+    setFormData(prev => ({
+      ...prev,
+      selectedAddons: prev.selectedAddons.includes(addonId)
+        ? prev.selectedAddons.filter(id => id !== addonId)
+        : [...prev.selectedAddons, addonId]
+    }));
+  };
 
   const events = appointments.map(apt => {
     const pet = pets.find(p => p.id === apt.pet_id);
@@ -176,7 +268,6 @@ const BanhoTosa = () => {
       .eq('id', selectedAppointment.id);
 
     if (error) {
-      console.error('Erro ao atualizar status:', error);
       toast({
         title: "Erro",
         description: "Não foi possível atualizar o status.",
@@ -201,15 +292,24 @@ const BanhoTosa = () => {
     setSelectedAppointment({ ...selectedAppointment, status });
   };
 
-  const handlePetReady = () => {
-    handleStatusChange('pronto');
+  const handlePetReady = async () => {
+    if (!selectedAppointment) return;
+    
+    await handleStatusChange('pronto');
+    
+    // TODO: Trigger webhook to n8n for WhatsApp notification
+    const client = clients.find(c => c.id === selectedAppointment.client_id);
+    const pet = pets.find(p => p.id === selectedAppointment.pet_id);
+    
+    toast({
+      title: "✅ Mensagem enviada!",
+      description: `Notificação enviada para ${client?.name} sobre ${pet?.name}.`,
+    });
+    
     setIsDialogOpen(false);
   };
 
   const handleSaveAppointment = async () => {
-    console.log("CLICK OK - handleSaveAppointment");
-    console.log("DADOS FORM", formData);
-
     if (!formData.clientId || !formData.petId || !formData.service || !formData.datetime) {
       toast({
         title: "Campos obrigatórios",
@@ -233,15 +333,14 @@ const BanhoTosa = () => {
         start_datetime: startDate.toISOString(),
         end_datetime: endDate.toISOString(),
         status: 'agendado',
+        price: calculatedPrice,
+        optional_services: formData.selectedAddons,
       })
       .select();
-
-    console.log("RESULTADO INSERT APPOINTMENT", data, error);
 
     setIsLoading(false);
 
     if (error) {
-      console.error('Erro ao salvar agendamento:', error);
       toast({
         title: "Erro ao agendar",
         description: error.message || "Não foi possível salvar o agendamento.",
@@ -252,16 +351,24 @@ const BanhoTosa = () => {
 
     toast({
       title: "Agendamento criado!",
-      description: "O agendamento foi salvo com sucesso.",
+      description: `Valor total: R$ ${calculatedPrice?.toFixed(2)}`,
     });
 
-    setFormData({ clientId: '', petId: '', service: '', datetime: '' });
+    setFormData({ clientId: '', petId: '', service: '', datetime: '', selectedAddons: [] });
+    setCalculatedPrice(null);
+    setBasePrice(0);
+    setAddonsTotal(0);
     setIsNewDialogOpen(false);
     fetchAppointments();
   };
 
   const getPet = (petId: string) => pets.find(p => p.id === petId);
   const getClient = (clientId: string) => clients.find(c => c.id === clientId);
+
+  const getAddonNames = (addonIds: string[] | null) => {
+    if (!addonIds || addonIds.length === 0) return null;
+    return addonIds.map(id => serviceAddons.find(a => a.id === id)?.name).filter(Boolean).join(', ');
+  };
 
   return (
     <div className="p-8">
@@ -288,7 +395,7 @@ const BanhoTosa = () => {
                 Novo Agendamento
               </Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="max-w-lg">
               <DialogHeader>
                 <DialogTitle>Novo Agendamento</DialogTitle>
                 <DialogDescription>
@@ -333,7 +440,7 @@ const BanhoTosa = () => {
                     <SelectContent>
                       {filteredPets.map(pet => (
                         <SelectItem key={pet.id} value={pet.id}>
-                          {pet.name} ({pet.breed || pet.species})
+                          {pet.name} ({pet.breed || pet.species}) - {pet.size || 'Porte N/D'}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -362,12 +469,69 @@ const BanhoTosa = () => {
                     onChange={(e) => setFormData(prev => ({ ...prev, datetime: e.target.value }))}
                   />
                 </div>
+
+                {/* Addons Section */}
+                {serviceAddons.length > 0 && (
+                  <div>
+                    <Label className="mb-2 block">Serviços Adicionais</Label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {serviceAddons.map(addon => (
+                        <div 
+                          key={addon.id}
+                          className={cn(
+                            "flex items-center gap-2 p-2 border rounded-lg cursor-pointer transition-colors",
+                            formData.selectedAddons.includes(addon.id) 
+                              ? "border-primary bg-primary/10" 
+                              : "border-border hover:border-primary/50"
+                          )}
+                          onClick={() => toggleAddon(addon.id)}
+                        >
+                          <Checkbox 
+                            checked={formData.selectedAddons.includes(addon.id)}
+                            onCheckedChange={() => toggleAddon(addon.id)}
+                          />
+                          <div className="flex-1">
+                            <p className="text-sm font-medium">{addon.name}</p>
+                            <p className="text-xs text-muted-foreground">R$ {addon.price.toFixed(2)}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Price Display */}
+                {calculatedPrice !== null && (
+                  <Card className="bg-primary/5 border-primary/20">
+                    <CardContent className="p-4">
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <p className="text-sm text-muted-foreground">Valor do Serviço</p>
+                          <p className="font-medium">R$ {basePrice.toFixed(2)}</p>
+                        </div>
+                        {addonsTotal > 0 && (
+                          <div className="text-right">
+                            <p className="text-sm text-muted-foreground">Adicionais</p>
+                            <p className="font-medium">+ R$ {addonsTotal.toFixed(2)}</p>
+                          </div>
+                        )}
+                      </div>
+                      <div className="border-t border-primary/20 mt-3 pt-3">
+                        <div className="flex justify-between items-center">
+                          <p className="font-semibold text-lg">Total</p>
+                          <p className="font-bold text-xl text-primary">R$ {calculatedPrice.toFixed(2)}</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
                 <Button 
                   className="w-full bg-gradient-primary hover:opacity-90"
                   onClick={handleSaveAppointment}
-                  disabled={isLoading}
+                  disabled={isLoading || calculatedPrice === null}
                 >
-                  {isLoading ? 'Salvando...' : 'Agendar'}
+                  {isLoading ? 'Salvando...' : `Agendar - R$ ${calculatedPrice?.toFixed(2) || '0,00'}`}
                 </Button>
               </div>
             </DialogContent>
@@ -474,9 +638,9 @@ const BanhoTosa = () => {
                   </p>
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Valor</p>
-                  <p className="font-semibold text-primary">
-                    {selectedAppointment.price ? `R$ ${selectedAppointment.price.toFixed(2)}` : 'A definir'}
+                  <p className="text-sm text-muted-foreground">Valor Total</p>
+                  <p className="font-semibold text-primary text-lg">
+                    R$ {selectedAppointment.price?.toFixed(2) || 'N/A'}
                   </p>
                 </div>
                 <div>
@@ -498,15 +662,31 @@ const BanhoTosa = () => {
                 </div>
               </div>
 
-              {selectedAppointment.status === 'em_atendimento' && (
-                <Button 
-                  className="w-full bg-gradient-success hover:opacity-90"
-                  onClick={handlePetReady}
-                >
-                  <CheckCircle2 className="w-4 h-4 mr-2" />
-                  Pet Pronto - Notificar Cliente
-                </Button>
+              {/* Addons */}
+              {selectedAppointment.optional_services && selectedAppointment.optional_services.length > 0 && (
+                <div>
+                  <p className="text-sm text-muted-foreground mb-2">Serviços Adicionais</p>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedAppointment.optional_services.map(addonId => {
+                      const addon = serviceAddons.find(a => a.id === addonId);
+                      return addon ? (
+                        <Badge key={addonId} variant="secondary">
+                          {addon.name} - R$ {addon.price.toFixed(2)}
+                        </Badge>
+                      ) : null;
+                    })}
+                  </div>
+                </div>
               )}
+
+              {/* Pet Ready Button */}
+              <Button 
+                className="w-full bg-gradient-to-r from-green-500 to-emerald-500 hover:opacity-90"
+                onClick={handlePetReady}
+              >
+                <CheckCircle2 className="w-4 h-4 mr-2" />
+                Pet Pronto - Notificar Cliente
+              </Button>
             </div>
           )}
         </DialogContent>

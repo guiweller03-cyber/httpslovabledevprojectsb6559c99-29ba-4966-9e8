@@ -28,6 +28,7 @@ interface PetDB {
   name: string;
   species: string;
   breed: string | null;
+  size: string | null;
 }
 
 interface HotelStayDB {
@@ -42,11 +43,23 @@ interface HotelStayDB {
   notes: string | null;
 }
 
+interface HotelRate {
+  id: string;
+  size_category: string;
+  daily_rate: number;
+}
+
 const statusColors: Record<HotelStatus, string> = {
   reservado: '#3b82f6',
   check_in: '#f59e0b',
   hospedado: '#22c55e',
   check_out: '#9ca3af',
+};
+
+const sizeLabels: Record<string, string> = {
+  pequeno: 'Pequeno',
+  medio: 'Médio',
+  grande: 'Grande',
 };
 
 const Hotelzinho = () => {
@@ -58,6 +71,7 @@ const Hotelzinho = () => {
   const [pets, setPets] = useState<PetDB[]>([]);
   const [filteredPets, setFilteredPets] = useState<PetDB[]>([]);
   const [bookings, setBookings] = useState<HotelStayDB[]>([]);
+  const [hotelRates, setHotelRates] = useState<HotelRate[]>([]);
   
   const [selectedBooking, setSelectedBooking] = useState<HotelStayDB | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -70,59 +84,54 @@ const Hotelzinho = () => {
     petId: '',
     checkIn: '',
     checkOut: '',
-    dailyRate: '',
   });
+
+  // Calculated values
+  const [dailyRate, setDailyRate] = useState<number>(0);
+  const [totalDays, setTotalDays] = useState<number>(0);
+  const [totalPrice, setTotalPrice] = useState<number>(0);
 
   // Fetch data from Supabase
   const fetchClients = async () => {
-    console.log("Fetching clients...");
     const { data, error } = await supabase
       .from('clients')
       .select('*')
       .order('name', { ascending: true });
     
-    if (error) {
-      console.error('Erro ao carregar clientes:', error);
-      return;
-    }
-    console.log("Clients loaded:", data);
-    setClients(data || []);
+    if (!error) setClients(data || []);
   };
 
   const fetchPets = async () => {
-    console.log("Fetching pets...");
     const { data, error } = await supabase
       .from('pets')
       .select('*')
       .order('name', { ascending: true });
     
-    if (error) {
-      console.error('Erro ao carregar pets:', error);
-      return;
-    }
-    console.log("Pets loaded:", data);
-    setPets(data || []);
+    if (!error) setPets(data || []);
   };
 
   const fetchBookings = async () => {
-    console.log("Fetching hotel bookings...");
     const { data, error } = await supabase
       .from('hotel_stays')
       .select('*')
       .order('check_in', { ascending: true });
     
-    if (error) {
-      console.error('Erro ao carregar reservas:', error);
-      return;
-    }
-    console.log("Bookings loaded:", data);
-    setBookings(data || []);
+    if (!error) setBookings(data || []);
+  };
+
+  const fetchHotelRates = async () => {
+    const { data, error } = await supabase
+      .from('hotel_rates')
+      .select('*');
+    
+    if (!error) setHotelRates(data || []);
   };
 
   useEffect(() => {
     fetchClients();
     fetchPets();
     fetchBookings();
+    fetchHotelRates();
   }, []);
 
   // Filter pets when client changes
@@ -131,10 +140,54 @@ const Hotelzinho = () => {
       const clientPets = pets.filter(p => p.client_id === formData.clientId);
       setFilteredPets(clientPets);
       setFormData(prev => ({ ...prev, petId: '' }));
+      setDailyRate(0);
+      setTotalDays(0);
+      setTotalPrice(0);
     } else {
       setFilteredPets([]);
     }
   }, [formData.clientId, pets]);
+
+  // Calculate daily rate based on pet size
+  useEffect(() => {
+    if (formData.petId) {
+      const pet = pets.find(p => p.id === formData.petId);
+      if (pet && pet.size) {
+        const rate = hotelRates.find(r => r.size_category === pet.size);
+        if (rate) {
+          setDailyRate(rate.daily_rate);
+        } else {
+          // Default rate if size not found
+          setDailyRate(80);
+        }
+      } else {
+        // Default to medium if no size specified
+        const mediumRate = hotelRates.find(r => r.size_category === 'medio');
+        setDailyRate(mediumRate?.daily_rate || 80);
+      }
+    }
+  }, [formData.petId, pets, hotelRates]);
+
+  // Calculate total price based on dates and daily rate
+  useEffect(() => {
+    if (formData.checkIn && formData.checkOut && dailyRate > 0) {
+      const checkInDate = new Date(formData.checkIn);
+      const checkOutDate = new Date(formData.checkOut);
+      const diffTime = checkOutDate.getTime() - checkInDate.getTime();
+      const days = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      
+      if (days > 0) {
+        setTotalDays(days);
+        setTotalPrice(days * dailyRate);
+      } else {
+        setTotalDays(0);
+        setTotalPrice(0);
+      }
+    } else {
+      setTotalDays(0);
+      setTotalPrice(0);
+    }
+  }, [formData.checkIn, formData.checkOut, dailyRate]);
 
   const events = bookings.map(booking => {
     const pet = pets.find(p => p.id === booking.pet_id);
@@ -168,7 +221,6 @@ const Hotelzinho = () => {
       .eq('id', selectedBooking.id);
 
     if (error) {
-      console.error('Erro ao atualizar status:', error);
       toast({
         title: "Erro",
         description: "Não foi possível atualizar o status.",
@@ -192,13 +244,19 @@ const Hotelzinho = () => {
   };
 
   const handleSaveBooking = async () => {
-    console.log("CLICK OK - handleSaveBooking");
-    console.log("DADOS FORM", formData);
-
-    if (!formData.clientId || !formData.petId || !formData.checkIn || !formData.checkOut || !formData.dailyRate) {
+    if (!formData.clientId || !formData.petId || !formData.checkIn || !formData.checkOut) {
       toast({
         title: "Campos obrigatórios",
         description: "Preencha todos os campos.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (totalDays <= 0) {
+      toast({
+        title: "Datas inválidas",
+        description: "A data de check-out deve ser posterior ao check-in.",
         variant: "destructive",
       });
       return;
@@ -208,9 +266,6 @@ const Hotelzinho = () => {
 
     const checkInDate = new Date(formData.checkIn);
     const checkOutDate = new Date(formData.checkOut);
-    const days = Math.ceil((checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24));
-    const dailyRate = parseFloat(formData.dailyRate);
-    const totalPrice = days * dailyRate;
 
     const { data, error } = await supabase
       .from('hotel_stays')
@@ -225,12 +280,9 @@ const Hotelzinho = () => {
       })
       .select();
 
-    console.log("RESULTADO INSERT BOOKING", data, error);
-
     setIsLoading(false);
 
     if (error) {
-      console.error('Erro ao salvar reserva:', error);
       toast({
         title: "Erro ao reservar",
         description: error.message || "Não foi possível salvar a reserva.",
@@ -241,10 +293,13 @@ const Hotelzinho = () => {
 
     toast({
       title: "Reserva criada!",
-      description: `Reserva de ${days} dia(s) criada com sucesso.`,
+      description: `${totalDays} diária(s) - Total: R$ ${totalPrice.toFixed(2)}`,
     });
 
-    setFormData({ clientId: '', petId: '', checkIn: '', checkOut: '', dailyRate: '' });
+    setFormData({ clientId: '', petId: '', checkIn: '', checkOut: '' });
+    setDailyRate(0);
+    setTotalDays(0);
+    setTotalPrice(0);
     setIsNewDialogOpen(false);
     fetchBookings();
   };
@@ -324,7 +379,7 @@ const Hotelzinho = () => {
                     <SelectContent>
                       {filteredPets.map(pet => (
                         <SelectItem key={pet.id} value={pet.id}>
-                          {pet.name} ({pet.breed || pet.species})
+                          {pet.name} ({pet.breed || pet.species}) - {sizeLabels[pet.size || ''] || 'Porte N/D'}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -348,21 +403,47 @@ const Hotelzinho = () => {
                     />
                   </div>
                 </div>
-                <div>
-                  <Label>Valor da Diária *</Label>
-                  <Input 
-                    type="number" 
-                    placeholder="R$ 0,00" 
-                    value={formData.dailyRate}
-                    onChange={(e) => setFormData(prev => ({ ...prev, dailyRate: e.target.value }))}
-                  />
-                </div>
+
+                {/* Price Display */}
+                {dailyRate > 0 && (
+                  <Card className="bg-primary/5 border-primary/20">
+                    <CardContent className="p-4">
+                      <div className="space-y-2">
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Porte do Pet:</span>
+                          <span className="font-medium">
+                            {sizeLabels[pets.find(p => p.id === formData.petId)?.size || ''] || 'Médio'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Valor da Diária:</span>
+                          <span className="font-medium">R$ {dailyRate.toFixed(2)}</span>
+                        </div>
+                        {totalDays > 0 && (
+                          <>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Quantidade de Diárias:</span>
+                              <span className="font-medium">{totalDays}</span>
+                            </div>
+                            <div className="border-t border-primary/20 pt-2 mt-2">
+                              <div className="flex justify-between items-center">
+                                <span className="font-semibold text-lg">Total</span>
+                                <span className="font-bold text-xl text-primary">R$ {totalPrice.toFixed(2)}</span>
+                              </div>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
                 <Button 
                   className="w-full bg-gradient-primary hover:opacity-90"
                   onClick={handleSaveBooking}
-                  disabled={isLoading}
+                  disabled={isLoading || totalPrice === 0}
                 >
-                  {isLoading ? 'Salvando...' : 'Reservar'}
+                  {isLoading ? 'Salvando...' : `Reservar - R$ ${totalPrice.toFixed(2)}`}
                 </Button>
               </div>
             </DialogContent>
@@ -499,12 +580,12 @@ const Hotelzinho = () => {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Total</p>
-                  <p className="font-semibold text-primary">
-                    R$ {selectedBooking.total_price?.toFixed(2) || '0.00'}
+                  <p className="font-semibold text-primary text-lg">
+                    R$ {selectedBooking.total_price?.toFixed(2) || 'N/A'}
                   </p>
                 </div>
                 <div className="col-span-2">
-                  <Label>Status</Label>
+                  <p className="text-sm text-muted-foreground">Status</p>
                   <Select 
                     value={selectedBooking.status || 'reservado'}
                     onValueChange={(value) => handleStatusChange(value as HotelStatus)}
