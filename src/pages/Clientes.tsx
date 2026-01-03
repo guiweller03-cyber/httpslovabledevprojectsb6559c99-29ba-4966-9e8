@@ -78,6 +78,7 @@ const Clientes = () => {
   const [isClientDialogOpen, setIsClientDialogOpen] = useState(false);
   const [isPetDialogOpen, setIsPetDialogOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [editingPetId, setEditingPetId] = useState<string | null>(null);
   
   // Client form state
   const [clientForm, setClientForm] = useState({
@@ -250,10 +251,79 @@ const Clientes = () => {
     });
     setAvailableBreeds([]);
     setIsSRD(false);
+    setEditingPetId(null);
+  };
+
+  // Open edit pet dialog with data
+  const handleEditPet = async (petId: string) => {
+    setIsLoading(true);
+    
+    try {
+      // Fetch pet data
+      const { data: petData, error: petError } = await supabase
+        .from('pets')
+        .select('*')
+        .eq('id', petId)
+        .maybeSingle();
+
+      if (petError || !petData) {
+        throw new Error('Pet não encontrado');
+      }
+
+      // Update breeds list for the species
+      if (petData.species) {
+        setAvailableBreeds(getBreedsBySpecies(petData.species as Species));
+      }
+
+      // Check if breed is SRD
+      const isSRDBreed = petData.breed?.includes('SRD') || false;
+      setIsSRD(isSRDBreed);
+
+      // Fetch health data
+      const { data: healthData } = await supabase
+        .from('pet_health')
+        .select('*')
+        .eq('pet_id', petId)
+        .maybeSingle();
+
+      // Populate form with pet data
+      setPetForm({
+        clientId: petData.client_id,
+        name: petData.name,
+        species: (petData.species as Species) || '',
+        breed: petData.breed || '',
+        size: (petData.size as PetSize) || '',
+        furType: (petData.coat_type as FurType) || '',
+        weight: petData.weight?.toString() || '',
+        preferredService: (petData.preferred_service as PreferredService) || '',
+        groomingType: (petData.grooming_type as GroomingType) || '',
+        vaccineType: healthData?.vaccine_type || '',
+        vaccineAppliedAt: healthData?.vaccine_applied_at || '',
+        vaccineValidityMonths: healthData?.vaccine_validity_months?.toString() || '12',
+        antiparasiticType: healthData?.antiparasitic_type || '',
+        antiparasiticAppliedAt: healthData?.antiparasitic_applied_at || '',
+        antiparasiticValidityDays: healthData?.antiparasitic_validity_days?.toString() || '30',
+        vermifugeType: healthData?.vermifuge_type || '',
+        vermifugeAppliedAt: healthData?.vermifuge_applied_at || '',
+        vermifugeValidityDays: healthData?.vermifuge_validity_days?.toString() || '90',
+      });
+
+      setEditingPetId(petId);
+      setIsPetDialogOpen(true);
+    } catch (error: any) {
+      console.error('Erro ao carregar pet:', error);
+      toast({
+        title: "Erro ao carregar pet",
+        description: error.message || "Não foi possível carregar os dados do pet.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleSavePet = async () => {
-    console.log("CLICK OK - handleSavePet");
+    console.log("CLICK OK - handleSavePet", editingPetId ? "(EDIT MODE)" : "(CREATE MODE)");
     console.log("DADOS FORM PET", petForm);
     
     // Validation
@@ -269,82 +339,107 @@ const Clientes = () => {
     setIsLoading(true);
 
     try {
-      // Insert pet
-      const { data: petData, error: petError } = await supabase
-        .from('pets')
-        .insert({
-          client_id: petForm.clientId,
-          name: petForm.name,
-          species: petForm.species,
-          breed: petForm.breed,
-          size: petForm.size,
-          coat_type: petForm.furType,
-          weight: petForm.weight ? parseFloat(petForm.weight) : null,
-          preferred_service: petForm.preferredService || null,
-          grooming_type: petForm.groomingType || null,
-        })
-        .select()
-        .single();
+      const petPayload = {
+        client_id: petForm.clientId,
+        name: petForm.name,
+        species: petForm.species,
+        breed: petForm.breed,
+        size: petForm.size,
+        coat_type: petForm.furType,
+        weight: petForm.weight ? parseFloat(petForm.weight) : null,
+        preferred_service: petForm.preferredService || null,
+        grooming_type: petForm.groomingType || null,
+      };
 
-      if (petError) throw petError;
+      let petId: string;
 
-      // If health data was provided, create pet_health record
-      const hasHealthData = petForm.vaccineType || petForm.antiparasiticType || petForm.vermifugeType;
-      
-      if (hasHealthData && petData) {
-        // Calculate expiration dates
-        let vaccineValidUntil = null;
-        let antipulgasValidUntil = null;
-        let vermifugeValidUntil = null;
+      if (editingPetId) {
+        // UPDATE existing pet
+        const { error: petError } = await supabase
+          .from('pets')
+          .update(petPayload)
+          .eq('id', editingPetId);
 
-        if (petForm.vaccineType && petForm.vaccineAppliedAt) {
-          const appliedDate = new Date(petForm.vaccineAppliedAt);
-          const validityMonths = parseInt(petForm.vaccineValidityMonths) || 12;
-          vaccineValidUntil = format(addMonths(appliedDate, validityMonths), 'yyyy-MM-dd');
-        }
+        if (petError) throw petError;
+        petId = editingPetId;
+      } else {
+        // INSERT new pet
+        const { data: petData, error: petError } = await supabase
+          .from('pets')
+          .insert(petPayload)
+          .select()
+          .single();
 
-        if (petForm.antiparasiticType && petForm.antiparasiticAppliedAt) {
-          const appliedDate = new Date(petForm.antiparasiticAppliedAt);
-          const validityDays = parseInt(petForm.antiparasiticValidityDays) || 30;
-          antipulgasValidUntil = format(addDays(appliedDate, validityDays), 'yyyy-MM-dd');
-        }
+        if (petError) throw petError;
+        petId = petData.id;
+      }
 
-        if (petForm.vermifugeType && petForm.vermifugeAppliedAt) {
-          const appliedDate = new Date(petForm.vermifugeAppliedAt);
-          const validityDays = parseInt(petForm.vermifugeValidityDays) || 90;
-          vermifugeValidUntil = format(addDays(appliedDate, validityDays), 'yyyy-MM-dd');
-        }
+      // Calculate expiration dates for health data
+      let vaccineValidUntil = null;
+      let antipulgasValidUntil = null;
+      let vermifugeValidUntil = null;
 
-        const healthData: Record<string, unknown> = {
-          pet_id: petData.id,
-          vaccine_name: petForm.vaccineType || null,
-          vaccine_type: petForm.vaccineType || null,
-          vaccine_applied_at: petForm.vaccineAppliedAt || null,
-          vaccine_validity_months: petForm.vaccineValidityMonths ? parseInt(petForm.vaccineValidityMonths) : null,
-          vaccine_valid_until: vaccineValidUntil,
-          antiparasitic_type: petForm.antiparasiticType || null,
-          antiparasitic_applied_at: petForm.antiparasiticAppliedAt || null,
-          antiparasitic_validity_days: petForm.antiparasiticValidityDays ? parseInt(petForm.antiparasiticValidityDays) : null,
-          antipulgas_valid_until: antipulgasValidUntil,
-          vermifuge_type: petForm.vermifugeType || null,
-          vermifuge_applied_at: petForm.vermifugeAppliedAt || null,
-          vermifuge_validity_days: petForm.vermifugeValidityDays ? parseInt(petForm.vermifugeValidityDays) : null,
-          vermifuge_valid_until: vermifugeValidUntil,
-        };
+      if (petForm.vaccineType && petForm.vaccineAppliedAt) {
+        const appliedDate = new Date(petForm.vaccineAppliedAt);
+        const validityMonths = parseInt(petForm.vaccineValidityMonths) || 12;
+        vaccineValidUntil = format(addMonths(appliedDate, validityMonths), 'yyyy-MM-dd');
+      }
 
-        const { error: healthError } = await supabase
+      if (petForm.antiparasiticType && petForm.antiparasiticAppliedAt) {
+        const appliedDate = new Date(petForm.antiparasiticAppliedAt);
+        const validityDays = parseInt(petForm.antiparasiticValidityDays) || 30;
+        antipulgasValidUntil = format(addDays(appliedDate, validityDays), 'yyyy-MM-dd');
+      }
+
+      if (petForm.vermifugeType && petForm.vermifugeAppliedAt) {
+        const appliedDate = new Date(petForm.vermifugeAppliedAt);
+        const validityDays = parseInt(petForm.vermifugeValidityDays) || 90;
+        vermifugeValidUntil = format(addDays(appliedDate, validityDays), 'yyyy-MM-dd');
+      }
+
+      const healthPayload: Record<string, unknown> = {
+        pet_id: petId,
+        vaccine_name: petForm.vaccineType || null,
+        vaccine_type: petForm.vaccineType || null,
+        vaccine_applied_at: petForm.vaccineAppliedAt || null,
+        vaccine_validity_months: petForm.vaccineValidityMonths ? parseInt(petForm.vaccineValidityMonths) : null,
+        vaccine_valid_until: vaccineValidUntil,
+        antiparasitic_type: petForm.antiparasiticType || null,
+        antiparasitic_applied_at: petForm.antiparasiticAppliedAt || null,
+        antiparasitic_validity_days: petForm.antiparasiticValidityDays ? parseInt(petForm.antiparasiticValidityDays) : null,
+        antipulgas_valid_until: antipulgasValidUntil,
+        vermifuge_type: petForm.vermifugeType || null,
+        vermifuge_applied_at: petForm.vermifugeAppliedAt || null,
+        vermifuge_validity_days: petForm.vermifugeValidityDays ? parseInt(petForm.vermifugeValidityDays) : null,
+        vermifuge_valid_until: vermifugeValidUntil,
+      };
+
+      // Check if health record exists
+      const { data: existingHealth } = await supabase
+        .from('pet_health')
+        .select('id')
+        .eq('pet_id', petId)
+        .maybeSingle();
+
+      if (existingHealth) {
+        // Update existing health record
+        await supabase
           .from('pet_health')
-          .insert(healthData as any);
-
-        if (healthError) {
-          console.error('Erro ao salvar dados de saúde:', healthError);
-          // Don't fail the whole operation, just log
+          .update(healthPayload)
+          .eq('pet_id', petId);
+      } else {
+        // Create new health record if any health data was provided
+        const hasHealthData = petForm.vaccineType || petForm.antiparasiticType || petForm.vermifugeType;
+        if (hasHealthData) {
+          await supabase
+            .from('pet_health')
+            .insert(healthPayload as any);
         }
       }
 
       toast({
-        title: "Pet cadastrado!",
-        description: `${petForm.name} foi cadastrado com sucesso.`,
+        title: editingPetId ? "Pet atualizado!" : "Pet cadastrado!",
+        description: `${petForm.name} foi ${editingPetId ? 'atualizado' : 'cadastrado'} com sucesso.`,
       });
 
       resetPetForm();
@@ -353,7 +448,7 @@ const Clientes = () => {
     } catch (error: any) {
       console.error('Erro ao salvar pet:', error);
       toast({
-        title: "Erro ao cadastrar",
+        title: editingPetId ? "Erro ao atualizar" : "Erro ao cadastrar",
         description: error.message || "Não foi possível salvar o pet.",
         variant: "destructive",
       });
@@ -393,7 +488,7 @@ const Clientes = () => {
               </DialogTrigger>
               <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
-                  <DialogTitle>Cadastrar Novo Pet</DialogTitle>
+                  <DialogTitle>{editingPetId ? 'Editar Pet' : 'Cadastrar Novo Pet'}</DialogTitle>
                 </DialogHeader>
                 
                 <Tabs defaultValue="dados" className="mt-4">
@@ -715,11 +810,11 @@ const Clientes = () => {
                 </Tabs>
                 
                 <div className="flex gap-2 mt-6">
-                  <Button variant="outline" onClick={() => setIsPetDialogOpen(false)} className="flex-1">
+                  <Button variant="outline" onClick={() => { setIsPetDialogOpen(false); resetPetForm(); }} className="flex-1">
                     Cancelar
                   </Button>
-                  <Button onClick={handleSavePet} className="flex-1 bg-gradient-primary hover:opacity-90">
-                    Cadastrar Pet
+                  <Button onClick={handleSavePet} disabled={isLoading} className="flex-1 bg-gradient-primary hover:opacity-90">
+                    {isLoading ? 'Salvando...' : (editingPetId ? 'Salvar Alterações' : 'Cadastrar Pet')}
                   </Button>
                 </div>
               </DialogContent>
@@ -887,7 +982,7 @@ const Clientes = () => {
                           {clientPets.map(pet => (
                             <div
                               key={pet.id}
-                              className="flex items-center gap-2 bg-muted px-3 py-1.5 rounded-full"
+                              className="flex items-center gap-2 bg-muted px-3 py-1.5 rounded-full group"
                             >
                               <span>{pet.species === 'cachorro' ? '🐕' : pet.species === 'gato' ? '🐈' : '🐾'}</span>
                               <span className="text-sm font-medium">{pet.name}</span>
@@ -902,6 +997,14 @@ const Clientes = () => {
                                   {pet.preferred_service === 'banho_tosa' ? 'B+T' : 'Banho'}
                                 </Badge>
                               )}
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                                onClick={() => handleEditPet(pet.id)}
+                              >
+                                <Edit className="w-3 h-3" />
+                              </Button>
                             </div>
                           ))}
                         </div>

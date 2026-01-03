@@ -356,31 +356,61 @@ export type Database = {
       }
       pet_health: {
         Row: {
+          antiparasitic_applied_at: string | null
+          antiparasitic_type: string | null
+          antiparasitic_validity_days: number | null
           antipulgas_valid_until: string | null
           created_at: string | null
           id: string
           pet_id: string
           updated_at: string | null
+          vaccine_applied_at: string | null
           vaccine_name: string | null
+          vaccine_type: string | null
           vaccine_valid_until: string | null
+          vaccine_validity_months: number | null
+          vermifuge_applied_at: string | null
+          vermifuge_type: string | null
+          vermifuge_valid_until: string | null
+          vermifuge_validity_days: number | null
         }
         Insert: {
+          antiparasitic_applied_at?: string | null
+          antiparasitic_type?: string | null
+          antiparasitic_validity_days?: number | null
           antipulgas_valid_until?: string | null
           created_at?: string | null
           id?: string
           pet_id: string
           updated_at?: string | null
+          vaccine_applied_at?: string | null
           vaccine_name?: string | null
+          vaccine_type?: string | null
           vaccine_valid_until?: string | null
+          vaccine_validity_months?: number | null
+          vermifuge_applied_at?: string | null
+          vermifuge_type?: string | null
+          vermifuge_valid_until?: string | null
+          vermifuge_validity_days?: number | null
         }
         Update: {
+          antiparasitic_applied_at?: string | null
+          antiparasitic_type?: string | null
+          antiparasitic_validity_days?: number | null
           antipulgas_valid_until?: string | null
           created_at?: string | null
           id?: string
           pet_id?: string
           updated_at?: string | null
+          vaccine_applied_at?: string | null
           vaccine_name?: string | null
+          vaccine_type?: string | null
           vaccine_valid_until?: string | null
+          vaccine_validity_months?: number | null
+          vermifuge_applied_at?: string | null
+          vermifuge_type?: string | null
+          vermifuge_valid_until?: string | null
+          vermifuge_validity_days?: number | null
         }
         Relationships: []
       }
