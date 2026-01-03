@@ -547,20 +547,25 @@ const FrenteCaixa = () => {
     try {
       const now = new Date().toISOString();
 
-      // 1. Update appointments - only mark as PAID, not change service status
+      // 1. Update appointments - mark payment as PAID
       const appointmentItems = invoiceItems.filter(item => item.type === 'banho_tosa' && item.sourceId);
       for (const item of appointmentItems) {
-        const paymentStatus: PaymentStatus = item.coveredByPlan ? 'isento' : 'pago';
+        const paymentStatus = item.coveredByPlan ? 'isento' : 'pago';
         
-        await supabase
+        const { error: aptError } = await supabase
           .from('bath_grooming_appointments')
           .update({ 
             status: 'finalizado',
             payment_status: paymentStatus,
             payment_method: item.coveredByPlan ? null : selectedPayment,
-            paid_at: new Date().toISOString(),
-          } as any)
+            paid_at: now,
+          })
           .eq('id', item.sourceId);
+
+        if (aptError) {
+          console.error('Error updating appointment:', aptError);
+          throw aptError;
+        }
 
         // Deduct plan credit if used
         if (item.coveredByPlan && item.petId) {
@@ -587,15 +592,20 @@ const FrenteCaixa = () => {
       // 2. Update hotel stays - mark as PAID
       const hotelItems = invoiceItems.filter(item => item.type === 'hotel' && item.sourceId);
       for (const item of hotelItems) {
-        await supabase
+        const { error: hotelError } = await supabase
           .from('hotel_stays')
           .update({ 
             status: 'check_out',
             payment_status: 'pago',
             payment_method: selectedPayment,
-            paid_at: new Date().toISOString(),
-          } as any)
+            paid_at: now,
+          })
           .eq('id', item.sourceId);
+
+        if (hotelError) {
+          console.error('Error updating hotel stay:', hotelError);
+          throw hotelError;
+        }
       }
 
       // 3. Update client last_purchase
@@ -635,10 +645,12 @@ const FrenteCaixa = () => {
       setInvoiceItems([]);
       setIssueNF(false);
       
-      // Refresh data
-      fetchAppointments();
-      fetchHotelStays();
-      fetchClientPlans();
+      // Refresh data from database to update UI immediately
+      await Promise.all([
+        fetchAppointments(),
+        fetchHotelStays(),
+        fetchClientPlans(),
+      ]);
 
     } catch (error) {
       console.error('Error finalizing sale:', error);
@@ -659,25 +671,35 @@ const FrenteCaixa = () => {
       const now = new Date().toISOString();
 
       if (item.type === 'banho_tosa') {
-        await supabase
+        const { error } = await supabase
           .from('bath_grooming_appointments')
           .update({ 
             status: 'finalizado',
             payment_status: 'pago',
             payment_method: selectedPayment,
             paid_at: now,
-          } as any)
+          })
           .eq('id', item.sourceId);
+
+        if (error) {
+          console.error('Error updating appointment:', error);
+          throw error;
+        }
       } else {
-        await supabase
+        const { error } = await supabase
           .from('hotel_stays')
           .update({ 
             status: 'check_out',
             payment_status: 'pago',
             payment_method: selectedPayment,
             paid_at: now,
-          } as any)
+          })
           .eq('id', item.sourceId);
+
+        if (error) {
+          console.error('Error updating hotel stay:', error);
+          throw error;
+        }
       }
 
       // Update client
@@ -702,9 +724,13 @@ const FrenteCaixa = () => {
         description: `${item.description} - R$ ${item.price.toFixed(2)}`,
       });
 
-      fetchAppointments();
-      fetchHotelStays();
+      // Refresh data immediately after payment
+      await Promise.all([
+        fetchAppointments(),
+        fetchHotelStays(),
+      ]);
     } catch (error) {
+      console.error('Quick pay error:', error);
       toast({
         title: "Erro",
         description: "Não foi possível registrar o pagamento.",
