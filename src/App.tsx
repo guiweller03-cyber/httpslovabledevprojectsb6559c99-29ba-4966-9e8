@@ -15,6 +15,7 @@ import FrenteCaixa from "./pages/FrenteCaixa";
 import WhatsAppPanel from "./pages/WhatsAppPanel";
 import Importar from "./pages/Importar";
 import TabelaValores from "./pages/TabelaValores";
+import ServicosDoDia from "./pages/ServicosDoDia";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -38,6 +39,7 @@ const App = () => (
             <Route path="/whatsapp" element={<WhatsAppPanel />} />
             <Route path="/importar" element={<Importar />} />
             <Route path="/tabela-valores" element={<TabelaValores />} />
+            <Route path="/servicos-do-dia" element={<ServicosDoDia />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </MainLayout>

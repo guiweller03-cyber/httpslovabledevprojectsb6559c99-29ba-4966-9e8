@@ -74,6 +74,30 @@ const statusColors: Record<AppointmentStatus, string> = {
   cancelado: '#ef4444',
 };
 
+// Tipos de tosa profissionais
+const GROOMING_TYPES = [
+  { value: 'tosa_higienica', label: 'Tosa Higiênica' },
+  { value: 'tosa_bebe', label: 'Tosa Bebê' },
+  { value: 'tosa_padrao_raca', label: 'Tosa Padrão da Raça' },
+  { value: 'tosa_completa', label: 'Tosa Completa' },
+  { value: 'tosa_verao', label: 'Tosa Verão' },
+  { value: 'apenas_banho', label: 'Apenas Banho (sem tosa)' },
+];
+
+// Tipos de pelo
+const COAT_TYPES = [
+  { value: 'curto', label: 'Curto' },
+  { value: 'medio', label: 'Médio' },
+  { value: 'longo', label: 'Longo' },
+];
+
+// Portes
+const SIZE_CATEGORIES = [
+  { value: 'pequeno', label: 'Pequeno' },
+  { value: 'medio', label: 'Médio' },
+  { value: 'grande', label: 'Grande' },
+];
+
 const BanhoTosa = () => {
   const { toast } = useToast();
   const calendarRef = useRef<FullCalendar>(null);
@@ -97,7 +121,11 @@ const BanhoTosa = () => {
     clientId: '',
     petId: '',
     service: '',
+    groomingType: '',
+    coatType: '',
+    size: '',
     datetime: '',
+    notes: '',
     selectedAddons: [] as string[],
   });
 
@@ -164,7 +192,13 @@ const BanhoTosa = () => {
     if (formData.clientId) {
       const clientPets = pets.filter(p => p.client_id === formData.clientId);
       setFilteredPets(clientPets);
-      setFormData(prev => ({ ...prev, petId: '', selectedAddons: [] }));
+      setFormData(prev => ({ 
+        ...prev, 
+        petId: '', 
+        coatType: '',
+        size: '',
+        selectedAddons: [] 
+      }));
       setCalculatedPrice(null);
       setBasePrice(0);
       setAddonsTotal(0);
@@ -173,39 +207,62 @@ const BanhoTosa = () => {
     }
   }, [formData.clientId, pets]);
 
-  // Calculate price automatically when pet or service changes
+  // Auto-fill pet characteristics when pet is selected
   useEffect(() => {
-    if (formData.petId && formData.service) {
+    if (formData.petId) {
       const pet = pets.find(p => p.id === formData.petId);
       if (pet) {
-        // Find matching price in service_prices table
-        const matchingPrice = servicePrices.find(sp => 
-          sp.breed?.toLowerCase() === pet.breed?.toLowerCase() &&
+        setFormData(prev => ({
+          ...prev,
+          coatType: pet.coat_type || '',
+          size: pet.size || '',
+        }));
+      }
+    }
+  }, [formData.petId, pets]);
+
+  // Calculate price automatically based on size + coat type + service type
+  useEffect(() => {
+    if (formData.service && formData.size && formData.coatType) {
+      const pet = pets.find(p => p.id === formData.petId);
+      
+      // Priority 1: Try to match by breed + coat_type + service_type
+      let matchingPrice = servicePrices.find(sp => 
+        pet?.breed &&
+        sp.breed?.toLowerCase() === pet.breed.toLowerCase() &&
+        sp.coat_type === formData.coatType &&
+        sp.service_type === formData.service
+      );
+      
+      // Priority 2: Match by size_category + coat_type + service_type
+      if (!matchingPrice) {
+        matchingPrice = servicePrices.find(sp => 
+          sp.size_category === formData.size &&
+          sp.coat_type === formData.coatType &&
           sp.service_type === formData.service
         );
-        
-        // If no exact breed match, try by size_category
-        if (matchingPrice) {
-          setBasePrice(matchingPrice.price);
-        } else {
-          // Fallback: find by size
-          const sizeMatch = servicePrices.find(sp => 
-            sp.size_category === pet.size &&
-            sp.service_type === formData.service
-          );
-          if (sizeMatch) {
-            setBasePrice(sizeMatch.price);
-          } else {
-            // Default prices if nothing matches
-            const defaultPrice = formData.service === 'banho' ? 50 : 80;
-            setBasePrice(defaultPrice);
-          }
-        }
+      }
+      
+      // Priority 3: Match by size_category + service_type only
+      if (!matchingPrice) {
+        matchingPrice = servicePrices.find(sp => 
+          sp.size_category === formData.size &&
+          sp.service_type === formData.service
+        );
+      }
+
+      if (matchingPrice) {
+        setBasePrice(matchingPrice.price);
+      } else {
+        // Default prices based on size and service
+        const sizeMultiplier = formData.size === 'pequeno' ? 1 : formData.size === 'medio' ? 1.3 : 1.6;
+        const baseValue = formData.service === 'banho' ? 40 : 70;
+        setBasePrice(Math.round(baseValue * sizeMultiplier));
       }
     } else {
       setBasePrice(0);
     }
-  }, [formData.petId, formData.service, pets, servicePrices]);
+  }, [formData.petId, formData.service, formData.size, formData.coatType, pets, servicePrices]);
 
   // Calculate addons total
   useEffect(() => {
@@ -358,10 +415,10 @@ const BanhoTosa = () => {
   };
 
   const handleSaveAppointment = async () => {
-    if (!formData.clientId || !formData.petId || !formData.service || !formData.datetime) {
+    if (!formData.clientId || !formData.petId || !formData.service || !formData.datetime || !formData.groomingType) {
       toast({
         title: "Campos obrigatórios",
-        description: "Preencha todos os campos.",
+        description: "Preencha todos os campos obrigatórios, incluindo o Tipo de Tosa.",
         variant: "destructive",
       });
       return;
@@ -378,11 +435,13 @@ const BanhoTosa = () => {
         client_id: formData.clientId,
         pet_id: formData.petId,
         service_type: formData.service,
+        grooming_type: formData.groomingType,
         start_datetime: startDate.toISOString(),
         end_datetime: endDate.toISOString(),
         status: 'agendado',
         price: calculatedPrice,
         optional_services: formData.selectedAddons,
+        notes: formData.notes || null,
       })
       .select();
 
@@ -402,7 +461,17 @@ const BanhoTosa = () => {
       description: `Valor total: R$ ${calculatedPrice?.toFixed(2)}`,
     });
 
-    setFormData({ clientId: '', petId: '', service: '', datetime: '', selectedAddons: [] });
+    setFormData({ 
+      clientId: '', 
+      petId: '', 
+      service: '', 
+      groomingType: '',
+      coatType: '',
+      size: '',
+      datetime: '', 
+      notes: '',
+      selectedAddons: [] 
+    });
     setCalculatedPrice(null);
     setBasePrice(0);
     setAddonsTotal(0);
@@ -502,7 +571,7 @@ const BanhoTosa = () => {
                   <Label>Serviço *</Label>
                   <Select 
                     value={formData.service}
-                    onValueChange={(value) => setFormData(prev => ({ ...prev, service: value }))}
+                    onValueChange={(value) => setFormData(prev => ({ ...prev, service: value, groomingType: value === 'banho' ? 'apenas_banho' : '' }))}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Tipo de serviço" />
@@ -513,12 +582,84 @@ const BanhoTosa = () => {
                     </SelectContent>
                   </Select>
                 </div>
+
+                {/* Tipo de Tosa - obrigatório */}
+                <div>
+                  <Label>Tipo de Tosa *</Label>
+                  <Select 
+                    value={formData.groomingType}
+                    onValueChange={(value) => setFormData(prev => ({ ...prev, groomingType: value }))}
+                    disabled={formData.service === 'banho'}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione o tipo de tosa" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {GROOMING_TYPES.map(type => (
+                        <SelectItem key={type.value} value={type.value}>
+                          {type.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Porte e Tipo de Pelo */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label>Porte *</Label>
+                    <Select 
+                      value={formData.size}
+                      onValueChange={(value) => setFormData(prev => ({ ...prev, size: value }))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Porte do pet" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {SIZE_CATEGORIES.map(size => (
+                          <SelectItem key={size.value} value={size.value}>
+                            {size.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>Tipo de Pelo *</Label>
+                    <Select 
+                      value={formData.coatType}
+                      onValueChange={(value) => setFormData(prev => ({ ...prev, coatType: value }))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Tipo de pelo" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {COAT_TYPES.map(coat => (
+                          <SelectItem key={coat.value} value={coat.value}>
+                            {coat.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
                 <div>
                   <Label>Data e Hora *</Label>
                   <Input 
                     type="datetime-local" 
                     value={formData.datetime}
                     onChange={(e) => setFormData(prev => ({ ...prev, datetime: e.target.value }))}
+                  />
+                </div>
+
+                {/* Observações */}
+                <div>
+                  <Label>Observações</Label>
+                  <Input 
+                    placeholder="Observações sobre o atendimento..."
+                    value={formData.notes}
+                    onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
                   />
                 </div>
 
@@ -684,9 +825,21 @@ const BanhoTosa = () => {
                   <p className="font-semibold">{getPet(selectedAppointment.pet_id)?.breed || 'N/A'}</p>
                 </div>
                 <div>
+                  <p className="text-sm text-muted-foreground">Porte / Pelo</p>
+                  <p className="font-semibold">
+                    {SIZE_CATEGORIES.find(s => s.value === getPet(selectedAppointment.pet_id)?.size)?.label || 'N/A'} / {COAT_TYPES.find(c => c.value === getPet(selectedAppointment.pet_id)?.coat_type)?.label || 'N/A'}
+                  </p>
+                </div>
+                <div>
                   <p className="text-sm text-muted-foreground">Serviço</p>
                   <p className="font-semibold capitalize">
                     {selectedAppointment.service_type?.replace('_', ' + ')}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Tipo de Tosa</p>
+                  <p className="font-semibold">
+                    {GROOMING_TYPES.find(g => g.value === selectedAppointment.grooming_type)?.label || 'Apenas Banho'}
                   </p>
                 </div>
                 <div>
