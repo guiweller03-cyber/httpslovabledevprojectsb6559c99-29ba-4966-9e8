@@ -982,7 +982,7 @@ const Clientes = () => {
                           {clientPets.map(pet => (
                             <div
                               key={pet.id}
-                              className="flex items-center gap-2 bg-muted px-3 py-1.5 rounded-full group"
+                              className="flex items-center gap-2 bg-muted px-3 py-1.5 rounded-full"
                             >
                               <span>{pet.species === 'cachorro' ? '🐕' : pet.species === 'gato' ? '🐈' : '🐾'}</span>
                               <span className="text-sm font-medium">{pet.name}</span>
@@ -999,11 +999,15 @@ const Clientes = () => {
                               )}
                               <Button 
                                 variant="ghost" 
-                                size="icon" 
-                                className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                                onClick={() => handleEditPet(pet.id)}
+                                size="sm" 
+                                className="h-6 px-2 text-primary hover:bg-primary/10"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleEditPet(pet.id);
+                                }}
                               >
-                                <Edit className="w-3 h-3" />
+                                <Edit className="w-3 h-3 mr-1" />
+                                Editar
                               </Button>
                             </div>
                           ))}
