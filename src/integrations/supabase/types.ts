@@ -16,14 +16,18 @@ export type Database = {
     Tables: {
       bath_grooming_appointments: {
         Row: {
+          arrival_time: string | null
+          bath_start_time: string | null
           client_id: string
           client_plan_id: string | null
+          completed_time: string | null
           created_at: string | null
           end_datetime: string
           google_event_id: string | null
           grooming_type: string | null
           id: string
           is_plan_usage: boolean | null
+          kanban_status: string | null
           notes: string | null
           optional_services: string[] | null
           paid_at: string | null
@@ -37,14 +41,18 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          arrival_time?: string | null
+          bath_start_time?: string | null
           client_id: string
           client_plan_id?: string | null
+          completed_time?: string | null
           created_at?: string | null
           end_datetime: string
           google_event_id?: string | null
           grooming_type?: string | null
           id?: string
           is_plan_usage?: boolean | null
+          kanban_status?: string | null
           notes?: string | null
           optional_services?: string[] | null
           paid_at?: string | null
@@ -58,14 +66,18 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          arrival_time?: string | null
+          bath_start_time?: string | null
           client_id?: string
           client_plan_id?: string | null
+          completed_time?: string | null
           created_at?: string | null
           end_datetime?: string
           google_event_id?: string | null
           grooming_type?: string | null
           id?: string
           is_plan_usage?: boolean | null
+          kanban_status?: string | null
           notes?: string | null
           optional_services?: string[] | null
           paid_at?: string | null
@@ -520,6 +532,7 @@ export type Database = {
           delivery_time: string | null
           grooming_type: string | null
           id: string
+          logistics_type: string | null
           name: string
           neighborhood: string | null
           photo_url: string | null
@@ -540,6 +553,7 @@ export type Database = {
           delivery_time?: string | null
           grooming_type?: string | null
           id?: string
+          logistics_type?: string | null
           name: string
           neighborhood?: string | null
           photo_url?: string | null
@@ -560,6 +574,7 @@ export type Database = {
           delivery_time?: string | null
           grooming_type?: string | null
           id?: string
+          logistics_type?: string | null
           name?: string
           neighborhood?: string | null
           photo_url?: string | null
