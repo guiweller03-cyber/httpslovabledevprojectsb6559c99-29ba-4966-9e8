@@ -48,6 +48,8 @@ interface AppointmentDB {
   status: string | null;
   notes: string | null;
   optional_services: string[] | null;
+  is_plan_usage?: boolean | null;
+  client_plan_id?: string | null;
 }
 
 interface ServicePrice {
@@ -64,6 +66,18 @@ interface ServiceAddon {
   name: string;
   price: number;
   active: boolean;
+}
+
+interface ClientPlan {
+  id: string;
+  client_id: string;
+  pet_id: string;
+  plan_id: string;
+  service_type?: string | null;
+  total_baths: number;
+  used_baths: number;
+  expires_at: string;
+  active: boolean | null;
 }
 
 const statusColors: Record<AppointmentStatus, string> = {
@@ -111,12 +125,17 @@ const BanhoTosa = () => {
   const [appointments, setAppointments] = useState<AppointmentDB[]>([]);
   const [servicePrices, setServicePrices] = useState<ServicePrice[]>([]);
   const [serviceAddons, setServiceAddons] = useState<ServiceAddon[]>([]);
+  const [clientPlans, setClientPlans] = useState<ClientPlan[]>([]);
   
   const [selectedAppointment, setSelectedAppointment] = useState<AppointmentDB | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isNewDialogOpen, setIsNewDialogOpen] = useState(false);
   const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  
+  // Plan detection state
+  const [activePlan, setActivePlan] = useState<ClientPlan | null>(null);
+  const [isPlanUsage, setIsPlanUsage] = useState(false);
   
   // Form state
   const [formData, setFormData] = useState({
@@ -136,7 +155,6 @@ const BanhoTosa = () => {
   const [basePrice, setBasePrice] = useState<number>(0);
   const [addonsTotal, setAddonsTotal] = useState<number>(0);
 
-  // Fetch data from Supabase
   const fetchClients = async () => {
     const { data, error } = await supabase
       .from('clients')
@@ -181,12 +199,22 @@ const BanhoTosa = () => {
     if (!error) setServiceAddons(data || []);
   };
 
+  const fetchClientPlans = async () => {
+    const { data, error } = await supabase
+      .from('client_plans')
+      .select('*')
+      .eq('active', true);
+    
+    if (!error) setClientPlans(data as unknown as ClientPlan[] || []);
+  };
+
   useEffect(() => {
     fetchClients();
     fetchPets();
     fetchAppointments();
     fetchServicePrices();
     fetchServiceAddons();
+    fetchClientPlans();
   }, []);
 
   // Filter pets when client changes
@@ -204,10 +232,41 @@ const BanhoTosa = () => {
       setCalculatedPrice(null);
       setBasePrice(0);
       setAddonsTotal(0);
+      setActivePlan(null);
+      setIsPlanUsage(false);
     } else {
       setFilteredPets([]);
     }
   }, [formData.clientId, pets]);
+
+  // Check for active plan when pet is selected
+  useEffect(() => {
+    if (formData.petId) {
+      const today = new Date();
+      const plan = clientPlans.find(cp => 
+        cp.pet_id === formData.petId &&
+        (cp.service_type === 'banho_tosa' || !cp.service_type) &&
+        cp.active === true &&
+        new Date(cp.expires_at) > today &&
+        (cp.total_baths - cp.used_baths) > 0
+      );
+      
+      if (plan) {
+        setActivePlan(plan);
+        setIsPlanUsage(true);
+        toast({
+          title: "🟢 Plano Detectado!",
+          description: `Pet possui plano com ${plan.total_baths - plan.used_baths} banhos restantes.`,
+        });
+      } else {
+        setActivePlan(null);
+        setIsPlanUsage(false);
+      }
+    } else {
+      setActivePlan(null);
+      setIsPlanUsage(false);
+    }
+  }, [formData.petId, clientPlans]);
 
   // Auto-fill pet characteristics when pet is selected
   useEffect(() => {
@@ -299,14 +358,15 @@ const BanhoTosa = () => {
     .map(apt => {
       const pet = pets.find(p => p.id === apt.pet_id);
       const client = clients.find(c => c.id === apt.client_id);
+      const planLabel = apt.is_plan_usage ? ' [PLANO]' : '';
       
       return {
         id: apt.id,
-        title: `${pet?.name || 'Pet'} - ${apt.service_type === 'banho' ? 'Banho' : 'Banho + Tosa'}`,
+        title: `${pet?.name || 'Pet'} - ${apt.service_type === 'banho' ? 'Banho' : 'Banho + Tosa'}${planLabel}`,
         start: apt.start_datetime,
         end: apt.end_datetime,
-        backgroundColor: statusColors[(apt.status as AppointmentStatus) || 'agendado'],
-        borderColor: statusColors[(apt.status as AppointmentStatus) || 'agendado'],
+        backgroundColor: apt.is_plan_usage ? '#22c55e' : statusColors[(apt.status as AppointmentStatus) || 'agendado'],
+        borderColor: apt.is_plan_usage ? '#22c55e' : statusColors[(apt.status as AppointmentStatus) || 'agendado'],
         extendedProps: {
           ...apt,
           petName: pet?.name,

@@ -6,7 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { MainLayout } from "@/components/layout/MainLayout";
 import Dashboard from "./pages/Dashboard";
 import BanhoTosa from "./pages/BanhoTosa";
-import Hotelzinho from "./pages/Hotelzinho";
+import HotelCreche from "./pages/HotelCreche";
 import Planos from "./pages/Planos";
 import Clientes from "./pages/Clientes";
 import Lembretes from "./pages/Lembretes";
@@ -16,6 +16,7 @@ import WhatsAppPanel from "./pages/WhatsAppPanel";
 import Importar from "./pages/Importar";
 import TabelaValores from "./pages/TabelaValores";
 import ServicosDoDia from "./pages/ServicosDoDia";
+import RotaDoDia from "./pages/RotaDoDia";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -30,7 +31,7 @@ const App = () => (
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/banho-tosa" element={<BanhoTosa />} />
-            <Route path="/hotelzinho" element={<Hotelzinho />} />
+            <Route path="/hotel-creche" element={<HotelCreche />} />
             <Route path="/planos" element={<Planos />} />
             <Route path="/clientes" element={<Clientes />} />
             <Route path="/lembretes" element={<Lembretes />} />
@@ -40,6 +41,7 @@ const App = () => (
             <Route path="/importar" element={<Importar />} />
             <Route path="/tabela-valores" element={<TabelaValores />} />
             <Route path="/servicos-do-dia" element={<ServicosDoDia />} />
+            <Route path="/rota-do-dia" element={<RotaDoDia />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </MainLayout>

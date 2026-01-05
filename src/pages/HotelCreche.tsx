@@ -3,16 +3,19 @@ import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import { motion } from 'framer-motion';
-import { Plus, Home, XCircle, AlertTriangle } from 'lucide-react';
+import { Plus, Home, XCircle, AlertTriangle, Baby, Building } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { format, isToday, isPast } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 
 type HotelStatus = 'reservado' | 'check_in' | 'hospedado' | 'check_out' | 'cancelado';
 
@@ -42,12 +45,27 @@ interface HotelStayDB {
   total_price: number | null;
   status: string | null;
   notes: string | null;
+  is_creche: boolean | null;
+  is_plan_usage?: boolean | null;
+  client_plan_id?: string | null;
 }
 
 interface HotelRate {
   id: string;
   size_category: string;
   daily_rate: number;
+}
+
+interface ClientPlan {
+  id: string;
+  client_id: string;
+  pet_id: string;
+  plan_id: string;
+  service_type?: string | null;
+  total_baths: number;
+  used_baths: number;
+  expires_at: string;
+  active: boolean | null;
 }
 
 const statusColors: Record<HotelStatus, string> = {
@@ -64,7 +82,7 @@ const sizeLabels: Record<string, string> = {
   grande: 'Grande',
 };
 
-const Hotelzinho = () => {
+const HotelCreche = () => {
   const { toast } = useToast();
   const calendarRef = useRef<FullCalendar>(null);
   
@@ -74,6 +92,7 @@ const Hotelzinho = () => {
   const [filteredPets, setFilteredPets] = useState<PetDB[]>([]);
   const [bookings, setBookings] = useState<HotelStayDB[]>([]);
   const [hotelRates, setHotelRates] = useState<HotelRate[]>([]);
+  const [clientPlans, setClientPlans] = useState<ClientPlan[]>([]);
   
   const [selectedBooking, setSelectedBooking] = useState<HotelStayDB | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -87,54 +106,35 @@ const Hotelzinho = () => {
     petId: '',
     checkIn: '',
     checkOut: '',
+    serviceType: 'hotel' as 'hotel' | 'creche',
   });
 
   // Calculated values
   const [dailyRate, setDailyRate] = useState<number>(0);
   const [totalDays, setTotalDays] = useState<number>(0);
   const [totalPrice, setTotalPrice] = useState<number>(0);
+  const [activePlan, setActivePlan] = useState<ClientPlan | null>(null);
+  const [isPlanUsage, setIsPlanUsage] = useState(false);
 
   // Fetch data from Supabase
-  const fetchClients = async () => {
-    const { data, error } = await supabase
-      .from('clients')
-      .select('*')
-      .order('name', { ascending: true });
-    
-    if (!error) setClients(data || []);
-  };
+  const fetchData = async () => {
+    const [clientsRes, petsRes, bookingsRes, ratesRes, plansRes] = await Promise.all([
+      supabase.from('clients').select('*').order('name'),
+      supabase.from('pets').select('*').order('name'),
+      supabase.from('hotel_stays').select('*').order('check_in'),
+      supabase.from('hotel_rates').select('*'),
+      supabase.from('client_plans').select('*').eq('active', true),
+    ]);
 
-  const fetchPets = async () => {
-    const { data, error } = await supabase
-      .from('pets')
-      .select('*')
-      .order('name', { ascending: true });
-    
-    if (!error) setPets(data || []);
-  };
-
-  const fetchBookings = async () => {
-    const { data, error } = await supabase
-      .from('hotel_stays')
-      .select('*')
-      .order('check_in', { ascending: true });
-    
-    if (!error) setBookings(data || []);
-  };
-
-  const fetchHotelRates = async () => {
-    const { data, error } = await supabase
-      .from('hotel_rates')
-      .select('*');
-    
-    if (!error) setHotelRates(data || []);
+    if (clientsRes.data) setClients(clientsRes.data);
+    if (petsRes.data) setPets(petsRes.data);
+    if (bookingsRes.data) setBookings(bookingsRes.data as unknown as HotelStayDB[]);
+    if (ratesRes.data) setHotelRates(ratesRes.data);
+    if (plansRes.data) setClientPlans(plansRes.data as unknown as ClientPlan[]);
   };
 
   useEffect(() => {
-    fetchClients();
-    fetchPets();
-    fetchBookings();
-    fetchHotelRates();
+    fetchData();
   }, []);
 
   // Filter pets when client changes
@@ -146,10 +146,40 @@ const Hotelzinho = () => {
       setDailyRate(0);
       setTotalDays(0);
       setTotalPrice(0);
+      setActivePlan(null);
+      setIsPlanUsage(false);
     } else {
       setFilteredPets([]);
     }
   }, [formData.clientId, pets]);
+
+  // Check for active plan when pet is selected and service is creche
+  useEffect(() => {
+    if (formData.petId && formData.serviceType === 'creche') {
+      const plan = clientPlans.find(cp => 
+        cp.pet_id === formData.petId &&
+        (cp.service_type === 'creche') &&
+        cp.active === true &&
+        !isPast(new Date(cp.expires_at)) &&
+        (cp.total_baths - cp.used_baths) > 0
+      );
+      
+      if (plan) {
+        setActivePlan(plan);
+        setIsPlanUsage(true);
+        toast({
+          title: "🟢 Plano Detectado!",
+          description: `Pet possui plano de creche com ${plan.total_baths - plan.used_baths} usos restantes.`,
+        });
+      } else {
+        setActivePlan(null);
+        setIsPlanUsage(false);
+      }
+    } else {
+      setActivePlan(null);
+      setIsPlanUsage(false);
+    }
+  }, [formData.petId, formData.serviceType, clientPlans]);
 
   // Calculate daily rate based on pet size
   useEffect(() => {
@@ -160,11 +190,9 @@ const Hotelzinho = () => {
         if (rate) {
           setDailyRate(rate.daily_rate);
         } else {
-          // Default rate if size not found
           setDailyRate(80);
         }
       } else {
-        // Default to medium if no size specified
         const mediumRate = hotelRates.find(r => r.size_category === 'medio');
         setDailyRate(mediumRate?.daily_rate || 80);
       }
@@ -181,7 +209,8 @@ const Hotelzinho = () => {
       
       if (days > 0) {
         setTotalDays(days);
-        setTotalPrice(days * dailyRate);
+        // Se usar plano, valor é zero
+        setTotalPrice(isPlanUsage ? 0 : days * dailyRate);
       } else {
         setTotalDays(0);
         setTotalPrice(0);
@@ -190,7 +219,7 @@ const Hotelzinho = () => {
       setTotalDays(0);
       setTotalPrice(0);
     }
-  }, [formData.checkIn, formData.checkOut, dailyRate]);
+  }, [formData.checkIn, formData.checkOut, dailyRate, isPlanUsage]);
 
   // Filter out cancelled bookings from calendar
   const events = bookings
@@ -198,10 +227,12 @@ const Hotelzinho = () => {
     .map(booking => {
       const pet = pets.find(p => p.id === booking.pet_id);
       const client = clients.find(c => c.id === booking.client_id);
+      const typeIcon = booking.is_creche ? '🐕' : '🏨';
+      const planBadge = booking.is_plan_usage ? ' [PLANO]' : '';
       
       return {
         id: booking.id,
-        title: `🐕 ${pet?.name || 'Pet'} (${client?.name || 'Cliente'})`,
+        title: `${typeIcon} ${pet?.name || 'Pet'} (${client?.name || 'Cliente'})${planBadge}`,
         start: booking.check_in,
         end: booking.check_out,
         backgroundColor: statusColors[(booking.status as HotelStatus) || 'reservado'],
@@ -252,7 +283,6 @@ const Hotelzinho = () => {
   const handleCancelBooking = async () => {
     if (!selectedBooking) return;
 
-    // Only allow cancellation if not checked out
     if (selectedBooking.status === 'check_out') {
       toast({
         title: "Não permitido",
@@ -274,6 +304,18 @@ const Hotelzinho = () => {
         variant: "destructive",
       });
       return;
+    }
+
+    // Se era uso de plano, devolver o uso
+    if (selectedBooking.is_plan_usage && selectedBooking.client_plan_id) {
+      // Buscar plano e reverter uso
+      const planToRevert = clientPlans.find(cp => cp.id === selectedBooking.client_plan_id);
+      if (planToRevert) {
+        await supabase
+          .from('client_plans')
+          .update({ used_baths: Math.max(0, planToRevert.used_baths - 1) })
+          .eq('id', selectedBooking.client_plan_id);
+      }
     }
 
     setBookings(prev => 
@@ -316,6 +358,24 @@ const Hotelzinho = () => {
     const checkInDate = new Date(formData.checkIn);
     const checkOutDate = new Date(formData.checkOut);
 
+    // Se usar plano de creche, descontar do saldo
+    if (isPlanUsage && activePlan) {
+      const { error: planError } = await supabase
+        .from('client_plans')
+        .update({ used_baths: activePlan.used_baths + totalDays })
+        .eq('id', activePlan.id);
+
+      if (planError) {
+        toast({
+          title: "Erro ao descontar do plano",
+          description: planError.message,
+          variant: "destructive",
+        });
+        setIsLoading(false);
+        return;
+      }
+    }
+
     const { data, error } = await supabase
       .from('hotel_stays')
       .insert({
@@ -324,8 +384,11 @@ const Hotelzinho = () => {
         check_in: checkInDate.toISOString(),
         check_out: checkOutDate.toISOString(),
         daily_rate: dailyRate,
-        total_price: totalPrice,
+        total_price: isPlanUsage ? 0 : totalPrice,
         status: 'reservado',
+        is_creche: formData.serviceType === 'creche',
+        is_plan_usage: isPlanUsage,
+        client_plan_id: activePlan?.id || null,
       })
       .select();
 
@@ -340,23 +403,40 @@ const Hotelzinho = () => {
       return;
     }
 
+    const serviceLabel = formData.serviceType === 'creche' ? 'Creche' : 'Hotel';
+    const planMessage = isPlanUsage ? ' (PLANO)' : '';
+
     toast({
-      title: "Reserva criada!",
-      description: `${totalDays} diária(s) - Total: R$ ${totalPrice.toFixed(2)}`,
+      title: `✅ ${serviceLabel} reservado!${planMessage}`,
+      description: isPlanUsage 
+        ? `Descontado ${totalDays} uso(s) do plano. Restam ${(activePlan?.total_baths || 0) - (activePlan?.used_baths || 0) - totalDays}.`
+        : `${totalDays} diária(s) - Total: R$ ${totalPrice.toFixed(2)}`,
     });
 
-    setFormData({ clientId: '', petId: '', checkIn: '', checkOut: '' });
+    setFormData({ clientId: '', petId: '', checkIn: '', checkOut: '', serviceType: 'hotel' });
     setDailyRate(0);
     setTotalDays(0);
     setTotalPrice(0);
+    setActivePlan(null);
+    setIsPlanUsage(false);
     setIsNewDialogOpen(false);
-    fetchBookings();
+    fetchData();
   };
 
   const getPet = (petId: string) => pets.find(p => p.id === petId);
   const getClient = (clientId: string) => clients.find(c => c.id === clientId);
 
-  const activeGuests = bookings.filter(b => b.status === 'hospedado');
+  // Pets no hotel/creche hoje
+  const todayGuests = bookings.filter(b => {
+    const checkIn = new Date(b.check_in);
+    const checkOut = new Date(b.check_out);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return b.status !== 'cancelado' && checkIn <= today && checkOut >= today;
+  });
+
+  const hotelGuests = todayGuests.filter(b => !b.is_creche);
+  const crecheGuests = todayGuests.filter(b => b.is_creche);
 
   const canCancel = selectedBooking && 
     selectedBooking.status !== 'check_out' && 
@@ -374,10 +454,10 @@ const Hotelzinho = () => {
           <div>
             <h1 className="text-3xl font-display font-bold text-foreground flex items-center gap-3">
               <Home className="w-8 h-8 text-primary" />
-              Hotelzinho
+              Hotel & Creche
             </h1>
             <p className="text-muted-foreground mt-1">
-              Gerencie as reservas e hospedagens
+              Gerencie hospedagens e creche diária
             </p>
           </div>
           <Dialog open={isNewDialogOpen} onOpenChange={setIsNewDialogOpen}>
@@ -391,10 +471,37 @@ const Hotelzinho = () => {
               <DialogHeader>
                 <DialogTitle>Nova Reserva</DialogTitle>
                 <DialogDescription>
-                  Preencha os dados para criar uma nova reserva de hospedagem.
+                  Selecione o tipo de serviço e preencha os dados.
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
+                {/* Tipo de Serviço */}
+                <div>
+                  <Label>Tipo de Serviço *</Label>
+                  <div className="grid grid-cols-2 gap-3 mt-2">
+                    <Button
+                      type="button"
+                      variant={formData.serviceType === 'hotel' ? 'default' : 'outline'}
+                      className="h-20 flex flex-col gap-2"
+                      onClick={() => setFormData(prev => ({ ...prev, serviceType: 'hotel' }))}
+                    >
+                      <Building className="w-6 h-6" />
+                      <span>🏨 Hotel</span>
+                      <span className="text-xs opacity-70">Com pernoite</span>
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={formData.serviceType === 'creche' ? 'default' : 'outline'}
+                      className="h-20 flex flex-col gap-2"
+                      onClick={() => setFormData(prev => ({ ...prev, serviceType: 'creche' }))}
+                    >
+                      <Baby className="w-6 h-6" />
+                      <span>🐕 Creche</span>
+                      <span className="text-xs opacity-70">Sem pernoite</span>
+                    </Button>
+                  </div>
+                </div>
+
                 <div>
                   <Label>Cliente *</Label>
                   <Select 
@@ -438,9 +545,40 @@ const Hotelzinho = () => {
                     </SelectContent>
                   </Select>
                 </div>
+
+                {/* Indicador de Plano */}
+                {isPlanUsage && activePlan && (
+                  <Card className="bg-green-500/10 border-green-500/20">
+                    <CardContent className="p-4">
+                      <div className="flex items-center gap-2">
+                        <Badge className="bg-green-500 text-white">🟢 PLANO</Badge>
+                        <span className="text-sm">
+                          {activePlan.total_baths - activePlan.used_baths} usos restantes
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        O valor será R$ 0,00 pois será descontado do plano
+                      </p>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {formData.petId && !isPlanUsage && formData.serviceType === 'creche' && (
+                  <Card className="bg-blue-500/10 border-blue-500/20">
+                    <CardContent className="p-4">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="border-blue-500 text-blue-600">🔵 AVULSO</Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Pet não possui plano de creche ativo
+                      </p>
+                    </CardContent>
+                  </Card>
+                )}
+
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label>Check-in *</Label>
+                    <Label>{formData.serviceType === 'creche' ? 'Entrada *' : 'Check-in *'}</Label>
                     <Input 
                       type="date" 
                       value={formData.checkIn}
@@ -448,7 +586,7 @@ const Hotelzinho = () => {
                     />
                   </div>
                   <div>
-                    <Label>Check-out *</Label>
+                    <Label>{formData.serviceType === 'creche' ? 'Saída *' : 'Check-out *'}</Label>
                     <Input 
                       type="date" 
                       value={formData.checkOut}
@@ -475,13 +613,21 @@ const Hotelzinho = () => {
                         {totalDays > 0 && (
                           <>
                             <div className="flex justify-between">
-                              <span className="text-muted-foreground">Quantidade de Diárias:</span>
+                              <span className="text-muted-foreground">
+                                {formData.serviceType === 'creche' ? 'Dias:' : 'Diárias:'}
+                              </span>
                               <span className="font-medium">{totalDays}</span>
                             </div>
                             <div className="border-t border-primary/20 pt-2 mt-2">
                               <div className="flex justify-between items-center">
                                 <span className="font-semibold text-lg">Total</span>
-                                <span className="font-bold text-xl text-primary">R$ {totalPrice.toFixed(2)}</span>
+                                <span className="font-bold text-xl text-primary">
+                                  {isPlanUsage ? (
+                                    <span className="text-green-500">R$ 0,00 (PLANO)</span>
+                                  ) : (
+                                    `R$ ${totalPrice.toFixed(2)}`
+                                  )}
+                                </span>
                               </div>
                             </div>
                           </>
@@ -494,9 +640,12 @@ const Hotelzinho = () => {
                 <Button 
                   className="w-full bg-gradient-primary hover:opacity-90"
                   onClick={handleSaveBooking}
-                  disabled={isLoading || totalPrice === 0}
+                  disabled={isLoading || totalDays === 0}
                 >
-                  {isLoading ? 'Salvando...' : `Reservar - R$ ${totalPrice.toFixed(2)}`}
+                  {isLoading ? 'Salvando...' : isPlanUsage 
+                    ? `Reservar - PLANO (${totalDays} uso${totalDays > 1 ? 's' : ''})`
+                    : `Reservar - R$ ${totalPrice.toFixed(2)}`
+                  }
                 </Button>
               </div>
             </DialogContent>
@@ -504,108 +653,173 @@ const Hotelzinho = () => {
         </div>
       </motion.div>
 
-      {/* Active Guests Summary */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.1 }}
-        className="mb-6"
-      >
-        <Card className="border-0 shadow-soft bg-gradient-hero text-white">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-white/80 text-sm">Hóspedes Ativos</p>
-                <p className="text-3xl font-display font-bold mt-1">
-                  {activeGuests.length} pet{activeGuests.length !== 1 ? 's' : ''}
-                </p>
+      {/* Tabs: Calendário / Hoje */}
+      <Tabs defaultValue="calendar" className="space-y-6">
+        <TabsList>
+          <TabsTrigger value="calendar">📅 Calendário</TabsTrigger>
+          <TabsTrigger value="today">
+            🐕 Hoje ({todayGuests.length})
+          </TabsTrigger>
+        </TabsList>
+
+        {/* Aba Calendário */}
+        <TabsContent value="calendar">
+          {/* Status Legend */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="flex flex-wrap gap-4 mb-6"
+          >
+            {Object.entries(statusColors).map(([status, color]) => (
+              <div key={status} className="flex items-center gap-2">
+                <div 
+                  className="w-3 h-3 rounded-full" 
+                  style={{ backgroundColor: color }}
+                />
+                <span className="text-sm text-muted-foreground capitalize">
+                  {status.replace('_', '-')}
+                </span>
               </div>
-              <div className="flex gap-4">
-                {activeGuests.slice(0, 4).map(guest => {
-                  const pet = getPet(guest.pet_id);
-                  return (
-                    <div 
-                      key={guest.id}
-                      className="bg-white/10 rounded-xl p-3 text-center"
-                    >
-                      <div className="text-2xl mb-1">🐕</div>
-                      <p className="text-sm font-medium">{pet?.name}</p>
-                      <p className="text-xs text-white/60">
-                        até {new Date(guest.check_out).toLocaleDateString('pt-BR', { 
-                          day: '2-digit', 
-                          month: 'short' 
-                        })}
-                      </p>
-                    </div>
-                  );
-                })}
-              </div>
+            ))}
+            <div className="flex items-center gap-2 ml-4">
+              <span className="text-sm">🏨 = Hotel</span>
+              <span className="text-sm">🐕 = Creche</span>
             </div>
-          </CardContent>
-        </Card>
-      </motion.div>
+          </motion.div>
 
-      {/* Status Legend */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.15 }}
-        className="flex flex-wrap gap-4 mb-6"
-      >
-        {Object.entries(statusColors).map(([status, color]) => (
-          <div key={status} className="flex items-center gap-2">
-            <div 
-              className="w-3 h-3 rounded-full" 
-              style={{ backgroundColor: color }}
-            />
-            <span className="text-sm text-muted-foreground capitalize">
-              {status.replace('_', '-')}
-            </span>
+          {/* Calendar */}
+          <Card className="border-0 shadow-soft">
+            <CardContent className="p-6">
+              <FullCalendar
+                ref={calendarRef}
+                plugins={[dayGridPlugin, interactionPlugin]}
+                initialView="dayGridMonth"
+                headerToolbar={{
+                  left: 'prev,next today',
+                  center: 'title',
+                  right: 'dayGridMonth',
+                }}
+                locale="pt-br"
+                events={events}
+                eventClick={handleEventClick}
+                height="auto"
+                buttonText={{
+                  today: 'Hoje',
+                  month: 'Mês',
+                }}
+              />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Aba Hoje */}
+        <TabsContent value="today">
+          <div className="grid md:grid-cols-2 gap-6">
+            {/* Hotel */}
+            <Card className="border-0 shadow-soft">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2">
+                  <Building className="w-5 h-5 text-primary" />
+                  🏨 Hotel ({hotelGuests.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {hotelGuests.length === 0 ? (
+                  <p className="text-center text-muted-foreground py-4">
+                    Nenhum pet no hotel hoje
+                  </p>
+                ) : (
+                  hotelGuests.map(guest => {
+                    const pet = getPet(guest.pet_id);
+                    const client = getClient(guest.client_id);
+                    return (
+                      <div key={guest.id} className="p-3 border rounded-lg flex items-center justify-between">
+                        <div>
+                          <p className="font-semibold">{pet?.name}</p>
+                          <p className="text-sm text-muted-foreground">{client?.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            Check-out: {format(new Date(guest.check_out), 'dd/MM')}
+                          </p>
+                        </div>
+                        <div className="flex gap-2">
+                          {guest.is_plan_usage && (
+                            <Badge className="bg-green-500 text-white">PLANO</Badge>
+                          )}
+                          <Badge variant="outline">{guest.status}</Badge>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Creche */}
+            <Card className="border-0 shadow-soft">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2">
+                  <Baby className="w-5 h-5 text-primary" />
+                  🐕 Creche ({crecheGuests.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {crecheGuests.length === 0 ? (
+                  <p className="text-center text-muted-foreground py-4">
+                    Nenhum pet na creche hoje
+                  </p>
+                ) : (
+                  crecheGuests.map(guest => {
+                    const pet = getPet(guest.pet_id);
+                    const client = getClient(guest.client_id);
+                    return (
+                      <div key={guest.id} className="p-3 border rounded-lg flex items-center justify-between">
+                        <div>
+                          <p className="font-semibold">{pet?.name}</p>
+                          <p className="text-sm text-muted-foreground">{client?.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            Entrada: {format(new Date(guest.check_in), 'HH:mm')} | 
+                            Saída: {format(new Date(guest.check_out), 'HH:mm')}
+                          </p>
+                        </div>
+                        <div className="flex gap-2">
+                          {guest.is_plan_usage && (
+                            <Badge className="bg-green-500 text-white">PLANO</Badge>
+                          )}
+                          <Badge variant="outline">{guest.status}</Badge>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </CardContent>
+            </Card>
           </div>
-        ))}
-      </motion.div>
-
-      {/* Calendar */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.2 }}
-      >
-        <Card className="border-0 shadow-soft">
-          <CardContent className="p-6">
-            <FullCalendar
-              ref={calendarRef}
-              plugins={[dayGridPlugin, interactionPlugin]}
-              initialView="dayGridMonth"
-              headerToolbar={{
-                left: 'prev,next today',
-                center: 'title',
-                right: 'dayGridMonth',
-              }}
-              locale="pt-br"
-              events={events}
-              eventClick={handleEventClick}
-              height="auto"
-              buttonText={{
-                today: 'Hoje',
-                month: 'Mês',
-              }}
-            />
-          </CardContent>
-        </Card>
-      </motion.div>
+        </TabsContent>
+      </Tabs>
 
       {/* Booking Detail Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Detalhes da Hospedagem</DialogTitle>
+            <DialogTitle>Detalhes da Reserva</DialogTitle>
             <DialogDescription>
               Visualize e gerencie os detalhes desta reserva.
             </DialogDescription>
           </DialogHeader>
           {selectedBooking && (
             <div className="space-y-4 py-4">
+              <div className="flex gap-2 mb-4">
+                <Badge className={selectedBooking.is_creche ? 'bg-purple-500' : 'bg-blue-500'}>
+                  {selectedBooking.is_creche ? '🐕 Creche' : '🏨 Hotel'}
+                </Badge>
+                {selectedBooking.is_plan_usage && (
+                  <Badge className="bg-green-500 text-white">🟢 PLANO</Badge>
+                )}
+                {!selectedBooking.is_plan_usage && (
+                  <Badge variant="outline" className="border-blue-500 text-blue-600">🔵 AVULSO</Badge>
+                )}
+              </div>
+              
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm text-muted-foreground">Pet</p>
@@ -616,13 +830,17 @@ const Hotelzinho = () => {
                   <p className="font-semibold">{getClient(selectedBooking.client_id)?.name}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Check-in</p>
+                  <p className="text-sm text-muted-foreground">
+                    {selectedBooking.is_creche ? 'Entrada' : 'Check-in'}
+                  </p>
                   <p className="font-semibold">
                     {new Date(selectedBooking.check_in).toLocaleDateString('pt-BR')}
                   </p>
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Check-out</p>
+                  <p className="text-sm text-muted-foreground">
+                    {selectedBooking.is_creche ? 'Saída' : 'Check-out'}
+                  </p>
                   <p className="font-semibold">
                     {new Date(selectedBooking.check_out).toLocaleDateString('pt-BR')}
                   </p>
@@ -634,7 +852,10 @@ const Hotelzinho = () => {
                 <div>
                   <p className="text-sm text-muted-foreground">Total</p>
                   <p className="font-semibold text-primary text-lg">
-                    R$ {selectedBooking.total_price?.toFixed(2) || 'N/A'}
+                    {selectedBooking.is_plan_usage 
+                      ? 'R$ 0,00 (PLANO)' 
+                      : `R$ ${selectedBooking.total_price?.toFixed(2) || 'N/A'}`
+                    }
                   </p>
                 </div>
                 <div className="col-span-2">
@@ -660,7 +881,6 @@ const Hotelzinho = () => {
                 </div>
               </div>
 
-              {/* Cancel Button */}
               {canCancel && (
                 <Button 
                   variant="destructive"
@@ -694,9 +914,8 @@ const Hotelzinho = () => {
                 <CardContent className="p-4">
                   <p className="text-sm"><strong>Pet:</strong> {getPet(selectedBooking.pet_id)?.name}</p>
                   <p className="text-sm"><strong>Cliente:</strong> {getClient(selectedBooking.client_id)?.name}</p>
-                  <p className="text-sm"><strong>Check-in:</strong> {new Date(selectedBooking.check_in).toLocaleDateString('pt-BR')}</p>
-                  <p className="text-sm"><strong>Check-out:</strong> {new Date(selectedBooking.check_out).toLocaleDateString('pt-BR')}</p>
-                  <p className="text-sm"><strong>Valor:</strong> R$ {selectedBooking.total_price?.toFixed(2)}</p>
+                  <p className="text-sm"><strong>Tipo:</strong> {selectedBooking.is_creche ? 'Creche' : 'Hotel'}</p>
+                  <p className="text-sm"><strong>Valor:</strong> {selectedBooking.is_plan_usage ? 'PLANO' : `R$ ${selectedBooking.total_price?.toFixed(2)}`}</p>
                 </CardContent>
               </Card>
             </div>
@@ -716,4 +935,4 @@ const Hotelzinho = () => {
   );
 };
 
-export default Hotelzinho;
+export default HotelCreche;

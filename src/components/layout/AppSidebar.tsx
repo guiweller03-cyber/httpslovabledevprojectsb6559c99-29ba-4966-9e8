@@ -13,7 +13,8 @@ import {
   ChevronRight,
   Bell,
   Settings,
-  ClipboardList
+  ClipboardList,
+  Car
 } from 'lucide-react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
@@ -25,7 +26,8 @@ const navItems = [
   { title: 'Dashboard', url: '/', icon: LayoutDashboard },
   { title: 'Banho & Tosa', url: '/banho-tosa', icon: Scissors },
   { title: 'Serviços do Dia', url: '/servicos-do-dia', icon: ClipboardList },
-  { title: 'Hotelzinho', url: '/hotelzinho', icon: Home },
+  { title: 'Hotel & Creche', url: '/hotel-creche', icon: Home },
+  { title: 'Rota do Dia', url: '/rota-do-dia', icon: Car },
   { title: 'Planos', url: '/planos', icon: CreditCard },
   { title: 'Clientes & Pets', url: '/clientes', icon: Users },
   { title: 'Lembretes', url: '/lembretes', icon: Bell },
