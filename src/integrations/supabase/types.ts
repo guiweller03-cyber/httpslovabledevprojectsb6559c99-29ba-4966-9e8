@@ -190,31 +190,52 @@ export type Database = {
       }
       clients: {
         Row: {
+          address: string | null
+          address_complement: string | null
+          address_number: string | null
+          city: string | null
           created_at: string | null
           email: string | null
           id: string
           last_interaction: string | null
           last_purchase: string | null
           name: string
+          neighborhood: string | null
+          state: string | null
           whatsapp: string
+          zip_code: string | null
         }
         Insert: {
+          address?: string | null
+          address_complement?: string | null
+          address_number?: string | null
+          city?: string | null
           created_at?: string | null
           email?: string | null
           id?: string
           last_interaction?: string | null
           last_purchase?: string | null
           name: string
+          neighborhood?: string | null
+          state?: string | null
           whatsapp: string
+          zip_code?: string | null
         }
         Update: {
+          address?: string | null
+          address_complement?: string | null
+          address_number?: string | null
+          city?: string | null
           created_at?: string | null
           email?: string | null
           id?: string
           last_interaction?: string | null
           last_purchase?: string | null
           name?: string
+          neighborhood?: string | null
+          state?: string | null
           whatsapp?: string
+          zip_code?: string | null
         }
         Relationships: []
       }

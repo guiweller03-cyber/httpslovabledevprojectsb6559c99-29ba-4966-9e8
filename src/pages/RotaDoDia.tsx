@@ -7,13 +7,24 @@ import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
+// Logistics types that involve company pickup or delivery
+const COMPANY_LOGISTICS = ['tutor_empresa', 'empresa_tutor', 'empresa_empresa'];
+
+const LOGISTICS_LABELS: Record<string, { label: string; color: string }> = {
+  tutor_tutor: { label: 'Tutor Leva e Busca', color: 'bg-blue-500' },
+  tutor_empresa: { label: 'Tutor Leva / Empresa Busca', color: 'bg-yellow-500' },
+  empresa_tutor: { label: 'Empresa Leva / Tutor Busca', color: 'bg-purple-500' },
+  empresa_empresa: { label: 'Empresa Leva e Busca', color: 'bg-orange-500' },
+};
+
 interface PetDB {
   id: string;
   name: string;
   client_id: string;
   address?: string | null;
   neighborhood?: string | null;
-  pickup_delivery?: boolean | null;
+  zip_code?: string | null;
+  logistics_type?: string | null;
   pickup_time?: string | null;
   delivery_time?: string | null;
 }
@@ -22,6 +33,9 @@ interface ClientDB {
   id: string;
   name: string;
   whatsapp: string;
+  address?: string | null;
+  neighborhood?: string | null;
+  city?: string | null;
 }
 
 interface PetWithPickup {
@@ -36,6 +50,7 @@ interface PetWithPickup {
   client_whatsapp: string;
   service_type: string;
   service_id: string;
+  logistics_type: string;
 }
 
 const RotaDoDia = () => {
@@ -52,7 +67,7 @@ const RotaDoDia = () => {
   const fetchRoutePets = async () => {
     setLoading(true);
 
-    // Buscar pets com pickup_delivery ativo que têm agendamento hoje
+    // Buscar pets que envolvem logística da empresa
     const [petsRes, clientsRes, appointmentsRes, hotelRes] = await Promise.all([
       supabase.from('pets').select('*'),
       supabase.from('clients').select('*'),
@@ -66,7 +81,8 @@ const RotaDoDia = () => {
 
     // Cast to local types since DB may have new columns not in generated types
     const allPets = (petsRes.data || []) as unknown as PetDB[];
-    const pets = allPets.filter(p => p.pickup_delivery === true);
+    // Filter pets with company logistics (empresa_tutor, tutor_empresa, empresa_empresa)
+    const pets = allPets.filter(p => p.logistics_type && COMPANY_LOGISTICS.includes(p.logistics_type));
     const clients = (clientsRes.data || []) as unknown as ClientDB[];
     const appointments = appointmentsRes.data || [];
     const hotelStays = hotelRes.data || [];
@@ -77,16 +93,17 @@ const RotaDoDia = () => {
     const pickupList: PetWithPickup[] = [];
     const deliveryList: PetWithPickup[] = [];
 
-    // Agendamentos de banho/tosa hoje
+    // Agendamentos de banho/tosa hoje - incluir se empresa busca ou empresa entrega
     appointments.forEach(apt => {
       const pet = pets.find(p => p.id === apt.pet_id);
       if (pet) {
         const client = getClient(pet.client_id);
+        const logisticsType = pet.logistics_type || 'tutor_tutor';
         const petData: PetWithPickup = {
           id: pet.id,
           name: pet.name,
-          address: pet.address || null,
-          neighborhood: pet.neighborhood || null,
+          address: pet.address || client?.address || null,
+          neighborhood: pet.neighborhood || client?.neighborhood || null,
           pickup_time: pet.pickup_time || null,
           delivery_time: pet.delivery_time || null,
           client_id: pet.client_id,
@@ -94,11 +111,17 @@ const RotaDoDia = () => {
           client_whatsapp: client?.whatsapp || '',
           service_type: apt.service_type === 'banho' ? 'Banho' : 'Banho + Tosa',
           service_id: apt.id,
+          logistics_type: logisticsType,
         };
-        // Buscar no início do dia
-        pickupList.push(petData);
-        // Entregar após atendimento
-        deliveryList.push(petData);
+        
+        // Empresa busca (empresa_tutor ou empresa_empresa)
+        if (logisticsType === 'empresa_tutor' || logisticsType === 'empresa_empresa') {
+          pickupList.push(petData);
+        }
+        // Empresa entrega (tutor_empresa ou empresa_empresa)
+        if (logisticsType === 'tutor_empresa' || logisticsType === 'empresa_empresa') {
+          deliveryList.push(petData);
+        }
       }
     });
 
@@ -111,13 +134,14 @@ const RotaDoDia = () => {
       if (pet) {
         const client = getClient(pet.client_id);
         const serviceLabel = stay.is_creche ? 'Creche' : 'Hotel';
+        const logisticsType = pet.logistics_type || 'tutor_tutor';
         
-        if (checkInDate === today) {
+        if (checkInDate === today && (logisticsType === 'empresa_tutor' || logisticsType === 'empresa_empresa')) {
           pickupList.push({
             id: pet.id,
             name: pet.name,
-            address: pet.address || null,
-            neighborhood: pet.neighborhood || null,
+            address: pet.address || client?.address || null,
+            neighborhood: pet.neighborhood || client?.neighborhood || null,
             pickup_time: pet.pickup_time || null,
             delivery_time: pet.delivery_time || null,
             client_id: pet.client_id,
@@ -125,15 +149,16 @@ const RotaDoDia = () => {
             client_whatsapp: client?.whatsapp || '',
             service_type: serviceLabel,
             service_id: stay.id,
+            logistics_type: logisticsType,
           });
         }
         
-        if (checkOutDate === today) {
+        if (checkOutDate === today && (logisticsType === 'tutor_empresa' || logisticsType === 'empresa_empresa')) {
           deliveryList.push({
             id: pet.id,
             name: pet.name,
-            address: pet.address || null,
-            neighborhood: pet.neighborhood || null,
+            address: pet.address || client?.address || null,
+            neighborhood: pet.neighborhood || client?.neighborhood || null,
             pickup_time: pet.pickup_time || null,
             delivery_time: pet.delivery_time || null,
             client_id: pet.client_id,
@@ -141,6 +166,7 @@ const RotaDoDia = () => {
             client_whatsapp: client?.whatsapp || '',
             service_type: serviceLabel,
             service_id: stay.id,
+            logistics_type: logisticsType,
           });
         }
       }
@@ -155,64 +181,75 @@ const RotaDoDia = () => {
     setLoading(false);
   };
 
-  const PetRouteCard = ({ pet, type }: { pet: PetWithPickup; type: 'pickup' | 'delivery' }) => (
-    <motion.div
-      initial={{ opacity: 0, x: -20 }}
-      animate={{ opacity: 1, x: 0 }}
-      className="p-4 border rounded-xl bg-card hover:shadow-md transition-shadow"
-    >
-      <div className="flex items-start justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
-            <Dog className="w-5 h-5 text-primary" />
-          </div>
-          <div>
-            <p className="font-semibold">{pet.name}</p>
-            <p className="text-sm text-muted-foreground flex items-center gap-1">
-              <User className="w-3 h-3" /> {pet.client_name}
-            </p>
-          </div>
-        </div>
-        <Badge variant="outline">{pet.service_type}</Badge>
-      </div>
-      
-      <div className="mt-3 space-y-2">
-        {pet.address && (
-          <div className="flex items-start gap-2 text-sm">
-            <MapPin className="w-4 h-4 text-muted-foreground flex-shrink-0 mt-0.5" />
-            <span>{pet.address}{pet.neighborhood ? `, ${pet.neighborhood}` : ''}</span>
-          </div>
-        )}
-        
-        <div className="flex items-center gap-4">
-          {type === 'pickup' && pet.pickup_time && (
-            <div className="flex items-center gap-1 text-sm">
-              <Clock className="w-4 h-4 text-muted-foreground" />
-              <span>Buscar: {pet.pickup_time}</span>
+  const PetRouteCard = ({ pet, type }: { pet: PetWithPickup; type: 'pickup' | 'delivery' }) => {
+    const logistics = LOGISTICS_LABELS[pet.logistics_type] || LOGISTICS_LABELS.tutor_tutor;
+    
+    return (
+      <motion.div
+        initial={{ opacity: 0, x: -20 }}
+        animate={{ opacity: 1, x: 0 }}
+        className="p-4 border rounded-xl bg-card hover:shadow-md transition-shadow"
+      >
+        <div className="flex items-start justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
+              <Dog className="w-5 h-5 text-primary" />
             </div>
-          )}
-          {type === 'delivery' && pet.delivery_time && (
-            <div className="flex items-center gap-1 text-sm">
-              <Clock className="w-4 h-4 text-muted-foreground" />
-              <span>Entregar: {pet.delivery_time}</span>
+            <div>
+              <p className="font-semibold">{pet.name}</p>
+              <p className="text-sm text-muted-foreground flex items-center gap-1">
+                <User className="w-3 h-3" /> {pet.client_name}
+              </p>
             </div>
-          )}
+          </div>
+          <Badge variant="outline">{pet.service_type}</Badge>
         </div>
         
-        {pet.client_whatsapp && (
-          <a 
-            href={`https://wa.me/55${pet.client_whatsapp.replace(/\D/g, '')}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1 text-sm text-green-600 hover:underline"
-          >
-            <Phone className="w-4 h-4" />
-            {pet.client_whatsapp}
-          </a>
-        )}
-      </div>
-    </motion.div>
-  );
+        <div className="mt-3 space-y-2">
+          {pet.address && (
+            <div className="flex items-start gap-2 text-sm">
+              <MapPin className="w-4 h-4 text-muted-foreground flex-shrink-0 mt-0.5" />
+              <span>{pet.address}{pet.neighborhood ? `, ${pet.neighborhood}` : ''}</span>
+            </div>
+          )}
+          
+          <div className="flex items-center gap-4">
+            {type === 'pickup' && pet.pickup_time && (
+              <div className="flex items-center gap-1 text-sm">
+                <Clock className="w-4 h-4 text-muted-foreground" />
+                <span>Buscar: {pet.pickup_time}</span>
+              </div>
+            )}
+            {type === 'delivery' && pet.delivery_time && (
+              <div className="flex items-center gap-1 text-sm">
+                <Clock className="w-4 h-4 text-muted-foreground" />
+                <span>Entregar: {pet.delivery_time}</span>
+              </div>
+            )}
+          </div>
+          
+          {/* Logistics badge */}
+          <div className="flex items-center gap-2">
+            <span className={`text-xs px-2 py-0.5 rounded-full text-white ${logistics.color}`}>
+              {logistics.label}
+            </span>
+          </div>
+          
+          {pet.client_whatsapp && (
+            <a 
+              href={`https://wa.me/55${pet.client_whatsapp.replace(/\D/g, '')}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 text-sm text-green-600 hover:underline"
+            >
+              <Phone className="w-4 h-4" />
+              {pet.client_whatsapp}
+            </a>
+          )}
+        </div>
+      </motion.div>
+    );
+  };
 
   return (
     <div className="p-8">

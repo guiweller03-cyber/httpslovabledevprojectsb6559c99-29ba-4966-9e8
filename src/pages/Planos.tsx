@@ -23,7 +23,13 @@ interface BathPlan {
   total_baths: number;
   price: number;
   validity_days: number;
+  service_type?: string;
 }
+
+const SERVICE_TYPE_LABELS: Record<string, string> = {
+  banho_tosa: '🛁 Banho & Tosa',
+  creche: '🐕 Creche',
+};
 
 interface Client {
   id: string;
@@ -79,6 +85,7 @@ const Planos = () => {
     total_baths: 1,
     price: 0,
     validity_days: 90,
+    service_type: 'banho_tosa',
   });
   const [editingPlan, setEditingPlan] = useState<BathPlan | null>(null);
 
@@ -147,6 +154,7 @@ const Planos = () => {
       price_paid: selectedPlan.price,
       expires_at: expiresAt.toISOString(),
       active: true,
+      service_type: selectedPlan.service_type || 'banho_tosa',
     });
 
     if (error) {
@@ -199,7 +207,7 @@ const Planos = () => {
       toast({ title: "Plano criado!" });
     }
 
-    setPlanForm({ plan_name: '', total_baths: 1, price: 0, validity_days: 90 });
+    setPlanForm({ plan_name: '', total_baths: 1, price: 0, validity_days: 90, service_type: 'banho_tosa' });
     setEditingPlan(null);
     setIsPlanDialogOpen(false);
     fetchData();
@@ -439,7 +447,7 @@ const Planos = () => {
                     variant="outline"
                     onClick={() => {
                       setEditingPlan(null);
-                      setPlanForm({ plan_name: '', total_baths: 1, price: 0, validity_days: 90 });
+                      setPlanForm({ plan_name: '', total_baths: 1, price: 0, validity_days: 90, service_type: 'banho_tosa' });
                     }}
                   >
                     <Plus className="w-4 h-4 mr-2" />
@@ -451,17 +459,33 @@ const Planos = () => {
                     <DialogTitle>{editingPlan ? 'Editar Plano' : 'Novo Plano'}</DialogTitle>
                   </DialogHeader>
                   <div className="space-y-4 py-4">
+                    {/* Service Type */}
+                    <div>
+                      <Label>Tipo de Serviço *</Label>
+                      <Select
+                        value={planForm.service_type}
+                        onValueChange={(v) => setPlanForm({ ...planForm, service_type: v })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione o tipo" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="banho_tosa">🛁 Banho & Tosa</SelectItem>
+                          <SelectItem value="creche">🐕 Creche</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                     <div>
                       <Label>Nome do Plano *</Label>
                       <Input
                         value={planForm.plan_name}
                         onChange={(e) => setPlanForm({ ...planForm, plan_name: e.target.value })}
-                        placeholder="Ex: Plano 4 Banhos"
+                        placeholder={planForm.service_type === 'creche' ? "Ex: Plano 10 Diárias" : "Ex: Plano 4 Banhos"}
                       />
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <Label>Quantidade de Banhos</Label>
+                        <Label>{planForm.service_type === 'creche' ? 'Quantidade de Diárias' : 'Quantidade de Banhos'}</Label>
                         <Input
                           type="number"
                           min={1}
@@ -500,17 +524,23 @@ const Planos = () => {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead>Tipo</TableHead>
                     <TableHead>Nome</TableHead>
-                    <TableHead>Banhos</TableHead>
+                    <TableHead>Qtd</TableHead>
                     <TableHead>Validade</TableHead>
                     <TableHead>Preço</TableHead>
-                    <TableHead>Preço/Banho</TableHead>
+                    <TableHead>Preço/Un</TableHead>
                     <TableHead className="w-24">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {bathPlans.map((plan) => (
                     <TableRow key={plan.id}>
+                      <TableCell>
+                        <Badge variant={plan.service_type === 'creche' ? 'secondary' : 'default'}>
+                          {SERVICE_TYPE_LABELS[plan.service_type || 'banho_tosa']}
+                        </Badge>
+                      </TableCell>
                       <TableCell className="font-medium">{plan.plan_name}</TableCell>
                       <TableCell>{plan.total_baths}</TableCell>
                       <TableCell>{plan.validity_days} dias</TableCell>
@@ -528,6 +558,7 @@ const Planos = () => {
                                 total_baths: plan.total_baths,
                                 price: plan.price,
                                 validity_days: plan.validity_days,
+                                service_type: plan.service_type || 'banho_tosa',
                               });
                               setIsPlanDialogOpen(true);
                             }}
@@ -547,7 +578,7 @@ const Planos = () => {
                   ))}
                   {bathPlans.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center text-muted-foreground">
+                      <TableCell colSpan={7} className="text-center text-muted-foreground">
                         Nenhum plano cadastrado
                       </TableCell>
                     </TableRow>

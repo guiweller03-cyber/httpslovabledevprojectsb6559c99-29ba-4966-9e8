@@ -84,7 +84,16 @@ interface PetDB {
   pickup_delivery: boolean | null;
   pickup_time: string | null;
   delivery_time: string | null;
+  logistics_type: string | null;
 }
+
+// Logistics type options
+const LOGISTICS_TYPES = [
+  { value: 'tutor_tutor', label: 'Tutor Leva e Busca', color: 'bg-blue-500' },
+  { value: 'tutor_empresa', label: 'Tutor Leva / Empresa Busca', color: 'bg-yellow-500' },
+  { value: 'empresa_tutor', label: 'Empresa Leva / Tutor Busca', color: 'bg-purple-500' },
+  { value: 'empresa_empresa', label: 'Empresa Leva e Busca', color: 'bg-orange-500' },
+];
 
 const Clientes = () => {
   const [clients, setClients] = useState<ClientDB[]>([]);
@@ -137,7 +146,7 @@ const Clientes = () => {
       return;
     }
     
-    setPets(data || []);
+    setPets((data || []) as unknown as PetDB[]);
   };
 
   // Load clients and pets on mount
@@ -251,7 +260,7 @@ const Clientes = () => {
     zip_code: '',
     address: '',
     neighborhood: '',
-    pickup_delivery: false,
+    logistics_type: 'tutor_tutor',
     pickup_time: '',
     delivery_time: '',
     // Health fields (optional)
@@ -360,7 +369,7 @@ const Clientes = () => {
       zip_code: '',
       address: '',
       neighborhood: '',
-      pickup_delivery: false,
+      logistics_type: 'tutor_tutor',
       pickup_time: '',
       delivery_time: '',
       vaccineType: '',
@@ -428,7 +437,7 @@ const Clientes = () => {
         zip_code: petDataCast.zip_code || '',
         address: petDataCast.address || '',
         neighborhood: petDataCast.neighborhood || '',
-        pickup_delivery: petDataCast.pickup_delivery || false,
+        logistics_type: petDataCast.logistics_type || 'tutor_tutor',
         pickup_time: petDataCast.pickup_time || '',
         delivery_time: petDataCast.delivery_time || '',
         vaccineType: healthData?.vaccine_type || '',
@@ -497,11 +506,12 @@ const Clientes = () => {
         };
       }
 
-      // Validate: cannot enable pickup_delivery without address
-      if (petForm.pickup_delivery && !addressData.address) {
+      // Validate: cannot enable company logistics without address
+      const requiresAddress = petForm.logistics_type !== 'tutor_tutor';
+      if (requiresAddress && !addressData.address) {
         toast({
           title: "Endereço obrigatório",
-          description: "Para ativar Busca e Traz, é necessário ter endereço completo.",
+          description: "Para logística da empresa, é necessário ter endereço completo.",
           variant: "destructive",
         });
         setIsLoading(false);
@@ -521,7 +531,7 @@ const Clientes = () => {
         zip_code: addressData.zip_code,
         address: addressData.address,
         neighborhood: addressData.neighborhood,
-        pickup_delivery: petForm.pickup_delivery,
+        logistics_type: petForm.logistics_type,
         pickup_time: petForm.pickup_time || null,
         delivery_time: petForm.delivery_time || null,
       };
@@ -950,60 +960,74 @@ const Clientes = () => {
                       )}
                     </div>
                     
-                    {/* Pickup & Delivery */}
+                    {/* Logistics Type */}
                     <div className="border-t pt-4 mt-4">
-                      <div className="flex items-center justify-between p-3 bg-primary/10 rounded-lg mb-4">
-                        <div className="flex items-center gap-2">
+                      <div className="mb-4">
+                        <Label className="flex items-center gap-2 text-base font-semibold mb-3">
                           <Truck className="w-5 h-5 text-primary" />
-                          <div>
-                            <Label className="font-medium">Busca e Traz</Label>
-                            <p className="text-xs text-muted-foreground">
-                              Ativar serviço de busca e entrega
-                            </p>
-                          </div>
-                        </div>
-                        <Switch 
-                          checked={petForm.pickup_delivery}
-                          onCheckedChange={(checked) => {
-                            // Check if address exists
+                          Tipo de Logística *
+                        </Label>
+                        <Select 
+                          value={petForm.logistics_type}
+                          onValueChange={(value) => {
+                            // Check if address exists for company logistics
+                            const requiresAddress = value !== 'tutor_tutor';
                             const hasAddress = petForm.useClientAddress 
                               ? !!getSelectedClientAddress()?.address 
                               : !!petForm.address;
                             
-                            if (checked && !hasAddress) {
+                            if (requiresAddress && !hasAddress) {
                               toast({
                                 title: "Endereço necessário",
-                                description: "Cadastre um endereço antes de ativar Busca e Traz.",
+                                description: "Cadastre um endereço antes de selecionar logística da empresa.",
                                 variant: "destructive",
                               });
                               return;
                             }
-                            setPetForm(prev => ({ ...prev, pickup_delivery: checked }));
+                            setPetForm(prev => ({ ...prev, logistics_type: value }));
                           }}
-                        />
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Selecione o tipo de logística" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {LOGISTICS_TYPES.map(lt => (
+                              <SelectItem key={lt.value} value={lt.value}>
+                                <span className={`inline-block w-3 h-3 rounded-full mr-2 ${lt.color}`}></span>
+                                {lt.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground mt-2">
+                          Define quem leva e busca o pet no serviço.
+                        </p>
                       </div>
                       
-                      {petForm.pickup_delivery && (
+                      {/* Time fields - show if company is involved */}
+                      {petForm.logistics_type !== 'tutor_tutor' && (
                         <motion.div
                           initial={{ opacity: 0, height: 0 }}
                           animate={{ opacity: 1, height: 'auto' }}
-                          className="grid grid-cols-2 gap-4"
+                          className="grid grid-cols-2 gap-4 p-3 bg-muted/50 rounded-lg"
                         >
                           <div>
-                            <Label>Horário de Busca</Label>
+                            <Label>Horário de Chegada</Label>
                             <Input 
                               type="time" 
                               value={petForm.pickup_time}
                               onChange={(e) => setPetForm(prev => ({ ...prev, pickup_time: e.target.value }))}
                             />
+                            <p className="text-xs text-muted-foreground mt-1">Quando o pet chega</p>
                           </div>
                           <div>
-                            <Label>Horário de Entrega</Label>
+                            <Label>Horário de Saída</Label>
                             <Input 
                               type="time" 
                               value={petForm.delivery_time}
                               onChange={(e) => setPetForm(prev => ({ ...prev, delivery_time: e.target.value }))}
                             />
+                            <p className="text-xs text-muted-foreground mt-1">Quando o pet sai</p>
                           </div>
                         </motion.div>
                       )}
