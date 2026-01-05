@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Users, Plus, Search, Phone, Mail, Dog, Cat, Edit, Trash2, Scissors, Droplets } from 'lucide-react';
+import { Users, Plus, Search, Phone, Mail, Dog, Cat, Edit, Trash2, Scissors, Droplets, MapPin, Truck, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -9,12 +9,14 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
 import { toast } from '@/hooks/use-toast';
 import { mockPets, getBreedsBySpecies } from '@/data/mockData';
 import { Pet, FurType, Species, PetSize, PreferredService, GroomingType, BreedInfo } from '@/types';
 import { supabase } from '@/integrations/supabase/client';
 import { addMonths, addDays, format } from 'date-fns';
 import { VaccineBooklet } from '@/components/pets/VaccineBooklet';
+import { lookupCep, formatCep } from '@/lib/cepLookup';
 
 const furTypeLabels: Record<FurType, string> = {
   curto: 'Pelo curto',
@@ -55,6 +57,13 @@ interface ClientDB {
   whatsapp: string;
   email: string | null;
   created_at: string | null;
+  zip_code: string | null;
+  address: string | null;
+  address_number: string | null;
+  address_complement: string | null;
+  neighborhood: string | null;
+  city: string | null;
+  state: string | null;
 }
 
 interface PetDB {
@@ -69,6 +78,12 @@ interface PetDB {
   preferred_service: string | null;
   grooming_type: string | null;
   created_at: string | null;
+  zip_code: string | null;
+  address: string | null;
+  neighborhood: string | null;
+  pickup_delivery: boolean | null;
+  pickup_time: string | null;
+  delivery_time: string | null;
 }
 
 const Clientes = () => {
@@ -85,7 +100,15 @@ const Clientes = () => {
     name: '',
     whatsapp: '',
     email: '',
+    zip_code: '',
+    address: '',
+    address_number: '',
+    address_complement: '',
+    neighborhood: '',
+    city: '',
+    state: '',
   });
+  const [isLoadingCep, setIsLoadingCep] = useState(false);
 
   // Fetch clients from database
   const fetchClients = async () => {
@@ -99,7 +122,7 @@ const Clientes = () => {
       return;
     }
     
-    setClients(data || []);
+    setClients((data || []) as unknown as ClientDB[]);
   };
 
   // Fetch pets from database
@@ -123,6 +146,39 @@ const Clientes = () => {
     fetchPets();
   }, []);
 
+  // CEP lookup for client
+  const handleClientCepLookup = async (cep: string) => {
+    const formattedCep = formatCep(cep);
+    setClientForm(prev => ({ ...prev, zip_code: formattedCep }));
+    
+    const cleanCep = cep.replace(/\D/g, '');
+    if (cleanCep.length === 8) {
+      setIsLoadingCep(true);
+      const result = await lookupCep(cleanCep);
+      setIsLoadingCep(false);
+      
+      if (result) {
+        setClientForm(prev => ({
+          ...prev,
+          address: result.logradouro,
+          neighborhood: result.bairro,
+          city: result.localidade,
+          state: result.uf,
+        }));
+        toast({
+          title: "Endereço encontrado!",
+          description: `${result.logradouro}, ${result.bairro}`,
+        });
+      } else {
+        toast({
+          title: "CEP não encontrado",
+          description: "Verifique o CEP digitado.",
+          variant: "destructive",
+        });
+      }
+    }
+  };
+
   // Save client to database
   const handleSaveClient = async () => {
     console.log("CLICK OK - handleSaveClient");
@@ -145,7 +201,14 @@ const Clientes = () => {
         name: clientForm.name,
         whatsapp: clientForm.whatsapp,
         email: clientForm.email || null,
-      })
+        zip_code: clientForm.zip_code || null,
+        address: clientForm.address || null,
+        address_number: clientForm.address_number || null,
+        address_complement: clientForm.address_complement || null,
+        neighborhood: clientForm.neighborhood || null,
+        city: clientForm.city || null,
+        state: clientForm.state || null,
+      } as any)
       .select();
 
     console.log("RESULTADO INSERT CLIENT", data, error);
@@ -167,7 +230,7 @@ const Clientes = () => {
       description: `${clientForm.name} foi salvo com sucesso.`,
     });
 
-    setClientForm({ name: '', whatsapp: '', email: '' });
+    setClientForm({ name: '', whatsapp: '', email: '', zip_code: '', address: '', address_number: '', address_complement: '', neighborhood: '', city: '', state: '' });
     setIsClientDialogOpen(false);
     fetchClients();
   };
@@ -183,6 +246,14 @@ const Clientes = () => {
     weight: '',
     preferredService: '' as PreferredService | '',
     groomingType: '' as GroomingType | '',
+    // Address fields
+    useClientAddress: true,
+    zip_code: '',
+    address: '',
+    neighborhood: '',
+    pickup_delivery: false,
+    pickup_time: '',
+    delivery_time: '',
     // Health fields (optional)
     vaccineType: '',
     vaccineAppliedAt: '',
@@ -194,6 +265,7 @@ const Clientes = () => {
     vermifugeAppliedAt: '',
     vermifugeValidityDays: '90',
   });
+  const [isLoadingPetCep, setIsLoadingPetCep] = useState(false);
   
   const [availableBreeds, setAvailableBreeds] = useState<BreedInfo[]>([]);
   const [isSRD, setIsSRD] = useState(false);
@@ -221,6 +293,51 @@ const Clientes = () => {
     }
   }, [petForm.breed, availableBreeds]);
 
+  // CEP lookup for pet
+  const handlePetCepLookup = async (cep: string) => {
+    const formattedCep = formatCep(cep);
+    setPetForm(prev => ({ ...prev, zip_code: formattedCep }));
+    
+    const cleanCep = cep.replace(/\D/g, '');
+    if (cleanCep.length === 8) {
+      setIsLoadingPetCep(true);
+      const result = await lookupCep(cleanCep);
+      setIsLoadingPetCep(false);
+      
+      if (result) {
+        setPetForm(prev => ({
+          ...prev,
+          address: result.logradouro,
+          neighborhood: result.bairro,
+        }));
+        toast({
+          title: "Endereço encontrado!",
+          description: `${result.logradouro}, ${result.bairro}`,
+        });
+      } else {
+        toast({
+          title: "CEP não encontrado",
+          description: "Verifique o CEP digitado.",
+          variant: "destructive",
+        });
+      }
+    }
+  };
+
+  // Get selected client address for pet
+  const getSelectedClientAddress = () => {
+    if (!petForm.clientId) return null;
+    const client = clients.find(c => c.id === petForm.clientId);
+    if (!client || !client.address) return null;
+    return {
+      address: client.address,
+      neighborhood: client.neighborhood,
+      city: client.city,
+      state: client.state,
+      zip_code: client.zip_code,
+    };
+  };
+
   const filteredClients = clients.filter(client =>
     client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     client.whatsapp.includes(searchTerm)
@@ -239,6 +356,13 @@ const Clientes = () => {
       weight: '',
       preferredService: '',
       groomingType: '',
+      useClientAddress: true,
+      zip_code: '',
+      address: '',
+      neighborhood: '',
+      pickup_delivery: false,
+      pickup_time: '',
+      delivery_time: '',
       vaccineType: '',
       vaccineAppliedAt: '',
       vaccineValidityMonths: '12',
@@ -287,6 +411,9 @@ const Clientes = () => {
         .maybeSingle();
 
       // Populate form with pet data
+      const petDataCast = petData as any;
+      const hasPetAddress = petDataCast.address || petDataCast.zip_code;
+      
       setPetForm({
         clientId: petData.client_id,
         name: petData.name,
@@ -297,6 +424,13 @@ const Clientes = () => {
         weight: petData.weight?.toString() || '',
         preferredService: (petData.preferred_service as PreferredService) || '',
         groomingType: (petData.grooming_type as GroomingType) || '',
+        useClientAddress: !hasPetAddress,
+        zip_code: petDataCast.zip_code || '',
+        address: petDataCast.address || '',
+        neighborhood: petDataCast.neighborhood || '',
+        pickup_delivery: petDataCast.pickup_delivery || false,
+        pickup_time: petDataCast.pickup_time || '',
+        delivery_time: petDataCast.delivery_time || '',
         vaccineType: healthData?.vaccine_type || '',
         vaccineAppliedAt: healthData?.vaccine_applied_at || '',
         vaccineValidityMonths: healthData?.vaccine_validity_months?.toString() || '12',
@@ -339,6 +473,41 @@ const Clientes = () => {
     setIsLoading(true);
 
     try {
+      // Get address data - use client address if useClientAddress is true
+      let addressData = {
+        zip_code: null as string | null,
+        address: null as string | null,
+        neighborhood: null as string | null,
+      };
+      
+      if (petForm.useClientAddress) {
+        const clientAddress = getSelectedClientAddress();
+        if (clientAddress) {
+          addressData = {
+            zip_code: clientAddress.zip_code || null,
+            address: clientAddress.address || null,
+            neighborhood: clientAddress.neighborhood || null,
+          };
+        }
+      } else {
+        addressData = {
+          zip_code: petForm.zip_code || null,
+          address: petForm.address || null,
+          neighborhood: petForm.neighborhood || null,
+        };
+      }
+
+      // Validate: cannot enable pickup_delivery without address
+      if (petForm.pickup_delivery && !addressData.address) {
+        toast({
+          title: "Endereço obrigatório",
+          description: "Para ativar Busca e Traz, é necessário ter endereço completo.",
+          variant: "destructive",
+        });
+        setIsLoading(false);
+        return;
+      }
+
       const petPayload = {
         client_id: petForm.clientId,
         name: petForm.name,
@@ -349,6 +518,12 @@ const Clientes = () => {
         weight: petForm.weight ? parseFloat(petForm.weight) : null,
         preferred_service: petForm.preferredService || null,
         grooming_type: petForm.groomingType || null,
+        zip_code: addressData.zip_code,
+        address: addressData.address,
+        neighborhood: addressData.neighborhood,
+        pickup_delivery: petForm.pickup_delivery,
+        pickup_time: petForm.pickup_time || null,
+        delivery_time: petForm.delivery_time || null,
       };
 
       let petId: string;
@@ -492,10 +667,11 @@ const Clientes = () => {
                 </DialogHeader>
                 
                 <Tabs defaultValue="dados" className="mt-4">
-                  <TabsList className="grid w-full grid-cols-3">
-                    <TabsTrigger value="dados">Dados do Pet</TabsTrigger>
+                  <TabsList className="grid w-full grid-cols-4">
+                    <TabsTrigger value="dados">Dados</TabsTrigger>
                     <TabsTrigger value="servicos">Serviços</TabsTrigger>
-                    <TabsTrigger value="caderneta">🩺 Carteirinha</TabsTrigger>
+                    <TabsTrigger value="logistica">🚗 Logística</TabsTrigger>
+                    <TabsTrigger value="caderneta">🩺 Saúde</TabsTrigger>
                   </TabsList>
                   
                   {/* Tab: Dados do Pet */}
@@ -692,14 +868,156 @@ const Clientes = () => {
                     )}
                   </TabsContent>
                   
-                  {/* Tab: Caderneta de Vacinação */}
+                  {/* Tab: Logística */}
+                  <TabsContent value="logistica" className="space-y-4 mt-4">
+                    <div className="bg-muted/50 rounded-lg p-4 mb-4">
+                      <p className="text-sm text-muted-foreground">
+                        Configure o endereço e opções de busca e entrega para este pet.
+                      </p>
+                    </div>
+                    
+                    {/* Address Selection */}
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                        <div>
+                          <Label className="font-medium">Usar endereço do cliente</Label>
+                          <p className="text-xs text-muted-foreground">
+                            {(() => {
+                              const clientAddr = getSelectedClientAddress();
+                              return clientAddr?.address 
+                                ? `${clientAddr.address}, ${clientAddr.neighborhood}` 
+                                : 'Cliente sem endereço cadastrado';
+                            })()}
+                          </p>
+                        </div>
+                        <Switch 
+                          checked={petForm.useClientAddress}
+                          onCheckedChange={(checked) => {
+                            setPetForm(prev => ({ ...prev, useClientAddress: checked }));
+                            if (checked) {
+                              // Clear pet-specific address
+                              setPetForm(prev => ({ ...prev, zip_code: '', address: '', neighborhood: '' }));
+                            }
+                          }}
+                          disabled={!petForm.clientId}
+                        />
+                      </div>
+                      
+                      {!petForm.useClientAddress && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          className="space-y-3 p-4 border rounded-lg"
+                        >
+                          <Label className="flex items-center gap-2 font-semibold">
+                            <MapPin className="w-4 h-4" />
+                            Endereço diferente para este pet
+                          </Label>
+                          
+                          <div>
+                            <Label>CEP</Label>
+                            <div className="relative">
+                              <Input 
+                                placeholder="00000-000" 
+                                value={petForm.zip_code}
+                                onChange={(e) => handlePetCepLookup(e.target.value)}
+                                maxLength={9}
+                              />
+                              {isLoadingPetCep && (
+                                <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin text-muted-foreground" />
+                              )}
+                            </div>
+                          </div>
+                          
+                          <div>
+                            <Label>Logradouro</Label>
+                            <Input 
+                              placeholder="Rua, Avenida..." 
+                              value={petForm.address}
+                              onChange={(e) => setPetForm(prev => ({ ...prev, address: e.target.value }))}
+                            />
+                          </div>
+                          
+                          <div>
+                            <Label>Bairro</Label>
+                            <Input 
+                              placeholder="Bairro" 
+                              value={petForm.neighborhood}
+                              onChange={(e) => setPetForm(prev => ({ ...prev, neighborhood: e.target.value }))}
+                            />
+                          </div>
+                        </motion.div>
+                      )}
+                    </div>
+                    
+                    {/* Pickup & Delivery */}
+                    <div className="border-t pt-4 mt-4">
+                      <div className="flex items-center justify-between p-3 bg-primary/10 rounded-lg mb-4">
+                        <div className="flex items-center gap-2">
+                          <Truck className="w-5 h-5 text-primary" />
+                          <div>
+                            <Label className="font-medium">Busca e Traz</Label>
+                            <p className="text-xs text-muted-foreground">
+                              Ativar serviço de busca e entrega
+                            </p>
+                          </div>
+                        </div>
+                        <Switch 
+                          checked={petForm.pickup_delivery}
+                          onCheckedChange={(checked) => {
+                            // Check if address exists
+                            const hasAddress = petForm.useClientAddress 
+                              ? !!getSelectedClientAddress()?.address 
+                              : !!petForm.address;
+                            
+                            if (checked && !hasAddress) {
+                              toast({
+                                title: "Endereço necessário",
+                                description: "Cadastre um endereço antes de ativar Busca e Traz.",
+                                variant: "destructive",
+                              });
+                              return;
+                            }
+                            setPetForm(prev => ({ ...prev, pickup_delivery: checked }));
+                          }}
+                        />
+                      </div>
+                      
+                      {petForm.pickup_delivery && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          className="grid grid-cols-2 gap-4"
+                        >
+                          <div>
+                            <Label>Horário de Busca</Label>
+                            <Input 
+                              type="time" 
+                              value={petForm.pickup_time}
+                              onChange={(e) => setPetForm(prev => ({ ...prev, pickup_time: e.target.value }))}
+                            />
+                          </div>
+                          <div>
+                            <Label>Horário de Entrega</Label>
+                            <Input 
+                              type="time" 
+                              value={petForm.delivery_time}
+                              onChange={(e) => setPetForm(prev => ({ ...prev, delivery_time: e.target.value }))}
+                            />
+                          </div>
+                        </motion.div>
+                      )}
+                    </div>
+                  </TabsContent>
+                  
+                  {/* Tab: Carteirinha de Saúde */}
                   <TabsContent value="caderneta" className="space-y-4 mt-4">
                     {editingPetId ? (
                       <VaccineBooklet petId={editingPetId} petName={petForm.name} />
                     ) : (
                       <div className="bg-muted/50 rounded-lg p-6 text-center">
                         <p className="text-sm text-muted-foreground">
-                          A caderneta de vacinação estará disponível após salvar o pet pela primeira vez.
+                          A carteirinha de saúde estará disponível após salvar o pet pela primeira vez.
                         </p>
                       </div>
                     )}
@@ -719,7 +1037,7 @@ const Clientes = () => {
             
             <Dialog open={isClientDialogOpen} onOpenChange={(open) => {
               setIsClientDialogOpen(open);
-              if (!open) setClientForm({ name: '', whatsapp: '', email: '' });
+              if (!open) setClientForm({ name: '', whatsapp: '', email: '', zip_code: '', address: '', address_number: '', address_complement: '', neighborhood: '', city: '', state: '' });
             }}>
               <DialogTrigger asChild>
                 <Button className="bg-gradient-primary hover:opacity-90">
@@ -731,9 +1049,9 @@ const Clientes = () => {
                 <DialogHeader>
                   <DialogTitle>Cadastrar Novo Cliente</DialogTitle>
                 </DialogHeader>
-                <div className="space-y-4 py-4">
+                <div className="space-y-4 py-4 max-h-[70vh] overflow-y-auto">
                   <div>
-                    <Label>Nome Completo</Label>
+                    <Label>Nome Completo *</Label>
                     <Input 
                       placeholder="Ex: Maria Silva" 
                       value={clientForm.name}
@@ -741,7 +1059,7 @@ const Clientes = () => {
                     />
                   </div>
                   <div>
-                    <Label>WhatsApp</Label>
+                    <Label>WhatsApp *</Label>
                     <Input 
                       placeholder="Ex: 11999887766" 
                       value={clientForm.whatsapp}
@@ -757,10 +1075,96 @@ const Clientes = () => {
                       onChange={(e) => setClientForm(prev => ({ ...prev, email: e.target.value }))}
                     />
                   </div>
+                  
+                  {/* Address Section */}
+                  <div className="border-t pt-4 mt-4">
+                    <Label className="flex items-center gap-2 mb-3 text-base font-semibold">
+                      <MapPin className="w-4 h-4" />
+                      Endereço
+                    </Label>
+                    
+                    <div className="space-y-3">
+                      <div>
+                        <Label>CEP</Label>
+                        <div className="relative">
+                          <Input 
+                            placeholder="00000-000" 
+                            value={clientForm.zip_code}
+                            onChange={(e) => handleClientCepLookup(e.target.value)}
+                            maxLength={9}
+                          />
+                          {isLoadingCep && (
+                            <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin text-muted-foreground" />
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Digite o CEP para buscar o endereço automaticamente
+                        </p>
+                      </div>
+                      
+                      <div>
+                        <Label>Logradouro</Label>
+                        <Input 
+                          placeholder="Rua, Avenida..." 
+                          value={clientForm.address}
+                          onChange={(e) => setClientForm(prev => ({ ...prev, address: e.target.value }))}
+                        />
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <Label>Número</Label>
+                          <Input 
+                            placeholder="123" 
+                            value={clientForm.address_number}
+                            onChange={(e) => setClientForm(prev => ({ ...prev, address_number: e.target.value }))}
+                          />
+                        </div>
+                        <div>
+                          <Label>Complemento</Label>
+                          <Input 
+                            placeholder="Apto, Bloco..." 
+                            value={clientForm.address_complement}
+                            onChange={(e) => setClientForm(prev => ({ ...prev, address_complement: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                      
+                      <div>
+                        <Label>Bairro</Label>
+                        <Input 
+                          placeholder="Bairro" 
+                          value={clientForm.neighborhood}
+                          onChange={(e) => setClientForm(prev => ({ ...prev, neighborhood: e.target.value }))}
+                        />
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <Label>Cidade</Label>
+                          <Input 
+                            placeholder="Cidade" 
+                            value={clientForm.city}
+                            onChange={(e) => setClientForm(prev => ({ ...prev, city: e.target.value }))}
+                          />
+                        </div>
+                        <div>
+                          <Label>Estado</Label>
+                          <Input 
+                            placeholder="UF" 
+                            value={clientForm.state}
+                            onChange={(e) => setClientForm(prev => ({ ...prev, state: e.target.value }))}
+                            maxLength={2}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  
                   <Button 
                     className="w-full bg-gradient-primary hover:opacity-90"
                     onClick={handleSaveClient}
-                    disabled={isLoading}
+                    disabled={isLoading || isLoadingCep}
                   >
                     {isLoading ? 'Salvando...' : 'Cadastrar Cliente'}
                   </Button>

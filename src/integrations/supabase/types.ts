@@ -17,11 +17,13 @@ export type Database = {
       bath_grooming_appointments: {
         Row: {
           client_id: string
+          client_plan_id: string | null
           created_at: string | null
           end_datetime: string
           google_event_id: string | null
           grooming_type: string | null
           id: string
+          is_plan_usage: boolean | null
           notes: string | null
           optional_services: string[] | null
           paid_at: string | null
@@ -36,11 +38,13 @@ export type Database = {
         }
         Insert: {
           client_id: string
+          client_plan_id?: string | null
           created_at?: string | null
           end_datetime: string
           google_event_id?: string | null
           grooming_type?: string | null
           id?: string
+          is_plan_usage?: boolean | null
           notes?: string | null
           optional_services?: string[] | null
           paid_at?: string | null
@@ -55,11 +59,13 @@ export type Database = {
         }
         Update: {
           client_id?: string
+          client_plan_id?: string | null
           created_at?: string | null
           end_datetime?: string
           google_event_id?: string | null
           grooming_type?: string | null
           id?: string
+          is_plan_usage?: boolean | null
           notes?: string | null
           optional_services?: string[] | null
           paid_at?: string | null
@@ -72,7 +78,15 @@ export type Database = {
           status?: string | null
           updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "bath_grooming_appointments_client_plan_id_fkey"
+            columns: ["client_plan_id"]
+            isOneToOne: false
+            referencedRelation: "client_plans"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       bath_plans: {
         Row: {
@@ -80,6 +94,7 @@ export type Database = {
           id: string
           plan_name: string
           price: number
+          service_type: string
           total_baths: number
           validity_days: number | null
         }
@@ -88,6 +103,7 @@ export type Database = {
           id?: string
           plan_name: string
           price: number
+          service_type?: string
           total_baths: number
           validity_days?: number | null
         }
@@ -96,6 +112,7 @@ export type Database = {
           id?: string
           plan_name?: string
           price?: number
+          service_type?: string
           total_baths?: number
           validity_days?: number | null
         }
@@ -112,6 +129,7 @@ export type Database = {
           plan_id: string
           price_paid: number
           purchased_at: string | null
+          service_type: string
           total_baths: number
           updated_at: string | null
           used_baths: number
@@ -126,6 +144,7 @@ export type Database = {
           plan_id: string
           price_paid: number
           purchased_at?: string | null
+          service_type?: string
           total_baths: number
           updated_at?: string | null
           used_baths?: number
@@ -140,6 +159,7 @@ export type Database = {
           plan_id?: string
           price_paid?: number
           purchased_at?: string | null
+          service_type?: string
           total_baths?: number
           updated_at?: string | null
           used_baths?: number
@@ -299,11 +319,13 @@ export type Database = {
           check_in: string
           check_out: string
           client_id: string
+          client_plan_id: string | null
           created_at: string | null
           daily_rate: number
           google_event_id: string | null
           id: string
           is_creche: boolean | null
+          is_plan_usage: boolean | null
           items_brought: string[] | null
           notes: string | null
           paid_at: string | null
@@ -318,11 +340,13 @@ export type Database = {
           check_in: string
           check_out: string
           client_id: string
+          client_plan_id?: string | null
           created_at?: string | null
           daily_rate: number
           google_event_id?: string | null
           id?: string
           is_creche?: boolean | null
+          is_plan_usage?: boolean | null
           items_brought?: string[] | null
           notes?: string | null
           paid_at?: string | null
@@ -337,11 +361,13 @@ export type Database = {
           check_in?: string
           check_out?: string
           client_id?: string
+          client_plan_id?: string | null
           created_at?: string | null
           daily_rate?: number
           google_event_id?: string | null
           id?: string
           is_creche?: boolean | null
+          is_plan_usage?: boolean | null
           items_brought?: string[] | null
           notes?: string | null
           paid_at?: string | null
@@ -352,7 +378,15 @@ export type Database = {
           total_price?: number | null
           updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "hotel_stays_client_plan_id_fkey"
+            columns: ["client_plan_id"]
+            isOneToOne: false
+            referencedRelation: "client_plans"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       pet_health: {
         Row: {
@@ -457,46 +491,64 @@ export type Database = {
       }
       pets: {
         Row: {
+          address: string | null
           breed: string | null
           client_id: string
           coat_type: string | null
           created_at: string | null
+          delivery_time: string | null
           grooming_type: string | null
           id: string
           name: string
+          neighborhood: string | null
           photo_url: string | null
+          pickup_delivery: boolean | null
+          pickup_time: string | null
           preferred_service: string | null
           size: string | null
           species: string
           weight: number | null
+          zip_code: string | null
         }
         Insert: {
+          address?: string | null
           breed?: string | null
           client_id: string
           coat_type?: string | null
           created_at?: string | null
+          delivery_time?: string | null
           grooming_type?: string | null
           id?: string
           name: string
+          neighborhood?: string | null
           photo_url?: string | null
+          pickup_delivery?: boolean | null
+          pickup_time?: string | null
           preferred_service?: string | null
           size?: string | null
           species: string
           weight?: number | null
+          zip_code?: string | null
         }
         Update: {
+          address?: string | null
           breed?: string | null
           client_id?: string
           coat_type?: string | null
           created_at?: string | null
+          delivery_time?: string | null
           grooming_type?: string | null
           id?: string
           name?: string
+          neighborhood?: string | null
           photo_url?: string | null
+          pickup_delivery?: boolean | null
+          pickup_time?: string | null
           preferred_service?: string | null
           size?: string | null
           species?: string
           weight?: number | null
+          zip_code?: string | null
         }
         Relationships: [
           {
