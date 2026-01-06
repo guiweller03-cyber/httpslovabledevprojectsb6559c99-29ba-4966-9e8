@@ -3,7 +3,12 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { AuthProvider } from "@/contexts/AuthContext";
+import { ModulesProvider } from "@/contexts/ModulesContext";
 import { MainLayout } from "@/components/layout/MainLayout";
+
+// Pages
+import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import BanhoTosa from "./pages/BanhoTosa";
 import GoogleCallback from "./pages/GoogleCallback";
@@ -28,23 +33,33 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <Routes>
-          <Route path="/google-callback" element={<GoogleCallback />} />
-          <Route path="/" element={<MainLayout><Dashboard /></MainLayout>} />
-          <Route path="/banho-tosa" element={<MainLayout><BanhoTosa /></MainLayout>} />
-          <Route path="/hotel-creche" element={<MainLayout><HotelCreche /></MainLayout>} />
-          <Route path="/planos" element={<MainLayout><Planos /></MainLayout>} />
-          <Route path="/clientes" element={<MainLayout><Clientes /></MainLayout>} />
-          <Route path="/lembretes" element={<MainLayout><Lembretes /></MainLayout>} />
-          <Route path="/inativos" element={<MainLayout><Inativos /></MainLayout>} />
-          <Route path="/caixa" element={<MainLayout><FrenteCaixa /></MainLayout>} />
-          <Route path="/whatsapp" element={<MainLayout><WhatsAppPanel /></MainLayout>} />
-          <Route path="/importar" element={<MainLayout><Importar /></MainLayout>} />
-          <Route path="/tabela-valores" element={<MainLayout><TabelaValores /></MainLayout>} />
-          <Route path="/servicos-do-dia" element={<MainLayout><ServicosDoDia /></MainLayout>} />
-          <Route path="/rota-do-dia" element={<MainLayout><RotaDoDia /></MainLayout>} />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+        <AuthProvider>
+          <ModulesProvider>
+            <Routes>
+              {/* Public routes */}
+              <Route path="/auth" element={<Auth />} />
+              <Route path="/google-callback" element={<GoogleCallback />} />
+              
+              {/* Protected routes */}
+              <Route path="/" element={<MainLayout><Dashboard /></MainLayout>} />
+              <Route path="/banho-tosa" element={<MainLayout><BanhoTosa /></MainLayout>} />
+              <Route path="/hotel-creche" element={<MainLayout><HotelCreche /></MainLayout>} />
+              <Route path="/planos" element={<MainLayout><Planos /></MainLayout>} />
+              <Route path="/clientes" element={<MainLayout><Clientes /></MainLayout>} />
+              <Route path="/lembretes" element={<MainLayout><Lembretes /></MainLayout>} />
+              <Route path="/inativos" element={<MainLayout><Inativos /></MainLayout>} />
+              <Route path="/caixa" element={<MainLayout><FrenteCaixa /></MainLayout>} />
+              <Route path="/whatsapp" element={<MainLayout><WhatsAppPanel /></MainLayout>} />
+              <Route path="/importar" element={<MainLayout><Importar /></MainLayout>} />
+              <Route path="/tabela-valores" element={<MainLayout><TabelaValores /></MainLayout>} />
+              <Route path="/servicos-do-dia" element={<MainLayout><ServicosDoDia /></MainLayout>} />
+              <Route path="/rota-do-dia" element={<MainLayout><RotaDoDia /></MainLayout>} />
+              
+              {/* 404 */}
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </ModulesProvider>
+        </AuthProvider>
       </BrowserRouter>
     </QueryClientProvider>
   </TooltipProvider>
