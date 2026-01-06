@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { useSearchParams } from 'react-router-dom';
-import { DollarSign, Plus, CreditCard, Banknote, Smartphone, Check, Gift, Trash2, Scissors, Hotel, Package, AlertCircle, Clock, User, ShoppingCart, Lock } from 'lucide-react';
+import { DollarSign, Plus, ShoppingCart, Lock, User, Scissors, Dog, History, Receipt, AlertTriangle, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -19,14 +19,30 @@ import { usePDVData } from '@/hooks/usePDVData';
 import { CashRegisterPanel } from '@/components/pdv/CashRegisterPanel';
 import { ProductCatalog } from '@/components/pdv/ProductCatalog';
 import { Cart } from '@/components/pdv/Cart';
-import { CartItem, PaymentMethod, paymentMethodLabels } from '@/components/pdv/types';
+import { PaymentPanel } from '@/components/pdv/PaymentPanel';
+import { InvoiceModal } from '@/components/pdv/InvoiceModal';
+import { ClientPetHistory } from '@/components/pdv/ClientPetHistory';
+import { CartItem, PaymentMethod } from '@/components/pdv/types';
 
-const paymentMethods: { value: PaymentMethod; label: string; icon: typeof DollarSign }[] = [
-  { value: 'dinheiro', label: 'Dinheiro', icon: Banknote },
-  { value: 'pix', label: 'PIX', icon: Smartphone },
-  { value: 'credito', label: 'Crédito', icon: CreditCard },
-  { value: 'debito', label: 'Débito', icon: CreditCard },
-];
+interface PaymentItem {
+  id: string;
+  method: PaymentMethod;
+  amount: number;
+}
+
+interface SaleData {
+  id: string;
+  created_at: string;
+  items: CartItem[];
+  subtotal: number;
+  discount: number;
+  total: number;
+  payments: { method: PaymentMethod; amount: number }[];
+  change: number;
+  client?: { name: string; whatsapp: string; email?: string };
+  pet?: { name: string; species: string };
+  employee?: { name: string };
+}
 
 const FrenteCaixa = () => {
   const { toast } = useToast();
@@ -46,10 +62,13 @@ const FrenteCaixa = () => {
   const [selectedClient, setSelectedClient] = useState('');
   const [selectedPetId, setSelectedPetId] = useState('');
   const [selectedEmployee, setSelectedEmployee] = useState('');
-  const [selectedPayment, setSelectedPayment] = useState<PaymentMethod>('pix');
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('servicos');
+  
+  // Invoice modal
+  const [showInvoice, setShowInvoice] = useState(false);
+  const [lastSale, setLastSale] = useState<SaleData | null>(null);
   
   // Extra item form
   const [extraDescription, setExtraDescription] = useState('');
@@ -58,6 +77,8 @@ const FrenteCaixa = () => {
   // Filtered pets based on selected client
   const filteredPets = selectedClient ? pdvData.getPetsForClient(selectedClient) : [];
   const selectedPet = pdvData.pets.find(p => p.id === selectedPetId);
+  const selectedClientData = pdvData.clients.find(c => c.id === selectedClient);
+  const selectedEmployeeData = pdvData.employees.find(e => e.id === selectedEmployee);
   const activePlan = selectedClient && selectedPetId ? pdvData.getActivePlanForPet(selectedClient, selectedPetId) : null;
   const remainingCredits = activePlan ? activePlan.total_baths - activePlan.used_baths : 0;
 
@@ -141,8 +162,8 @@ const FrenteCaixa = () => {
   const planDiscount = cartItems.filter(i => i.covered_by_plan).reduce((acc, i) => acc + i.unit_price * i.quantity, 0);
   const totalToPay = subtotal - totalDiscount - planDiscount;
 
-  // Finalize sale
-  const handleFinalizeSale = async () => {
+  // Finalize sale with multiple payments
+  const handleFinalizeSale = async (payments: PaymentItem[], change: number) => {
     if (cartItems.length === 0) {
       toast({ title: 'Carrinho vazio', variant: 'destructive' });
       return;
@@ -158,6 +179,9 @@ const FrenteCaixa = () => {
     const now = new Date().toISOString();
 
     try {
+      // Determine primary payment method (largest amount)
+      const primaryPayment = payments.reduce((a, b) => a.amount > b.amount ? a : b);
+
       // 1. Create sale record
       const { data: sale, error: saleError } = await (supabase as any)
         .from('sales')
@@ -169,8 +193,11 @@ const FrenteCaixa = () => {
           subtotal,
           discount_amount: totalDiscount + planDiscount,
           total_amount: totalToPay,
-          payment_method: selectedPayment,
+          payment_method: primaryPayment.method,
           payment_status: 'pago',
+          notes: payments.length > 1 
+            ? `Pagamento múltiplo: ${payments.map(p => `${p.method}: R$${p.amount.toFixed(2)}`).join(', ')}`
+            : null,
         })
         .select()
         .single();
@@ -199,22 +226,30 @@ const FrenteCaixa = () => {
           await supabase.from('bath_grooming_appointments').update({
             status: 'finalizado',
             payment_status: item.covered_by_plan ? 'isento' : 'pago',
-            payment_method: selectedPayment,
+            payment_method: primaryPayment.method,
             paid_at: now,
           } as any).eq('id', item.source_id);
+
+          // Update plan usage if covered
+          if (item.covered_by_plan && activePlan) {
+            await supabase.from('client_plans').update({
+              used_baths: activePlan.used_baths + 1,
+            }).eq('id', activePlan.id);
+          }
         } else if (item.type === 'service_hotel' && item.source_id) {
           await supabase.from('hotel_stays').update({
             status: 'check_out',
             payment_status: 'pago',
-            payment_method: selectedPayment,
+            payment_method: primaryPayment.method,
             paid_at: now,
           } as any).eq('id', item.source_id);
         } else if (item.type === 'product' && item.product_id) {
           // Update stock
-          await (supabase as any).rpc('', {}).catch(() => {});
           const { data: prod } = await (supabase as any).from('products').select('stock_quantity').eq('id', item.product_id).single();
           if (prod) {
-            await (supabase as any).from('products').update({ stock_quantity: Math.max(0, prod.stock_quantity - item.quantity) }).eq('id', item.product_id);
+            await (supabase as any).from('products').update({ 
+              stock_quantity: Math.max(0, prod.stock_quantity - item.quantity) 
+            }).eq('id', item.product_id);
           }
         }
 
@@ -224,6 +259,7 @@ const FrenteCaixa = () => {
           await (supabase as any).from('commissions').insert({
             employee_id: selectedEmployee,
             sale_id: sale.id,
+            sale_item_id: null,
             amount: commissionAmount,
             rate: item.commission_rate,
             status: 'pendente',
@@ -236,12 +272,40 @@ const FrenteCaixa = () => {
         await supabase.from('clients').update({ last_purchase: now }).eq('id', selectedClient);
       }
 
+      // Prepare sale data for invoice
+      const saleData: SaleData = {
+        id: sale.id,
+        created_at: sale.created_at,
+        items: cartItems,
+        subtotal,
+        discount: totalDiscount + planDiscount,
+        total: totalToPay,
+        payments: payments.map(p => ({ method: p.method, amount: p.amount })),
+        change,
+        client: selectedClientData ? { 
+          name: selectedClientData.name, 
+          whatsapp: selectedClientData.whatsapp,
+          email: selectedClientData.email || undefined,
+        } : undefined,
+        pet: selectedPet ? { 
+          name: selectedPet.name, 
+          species: selectedPet.species 
+        } : undefined,
+        employee: selectedEmployeeData ? { 
+          name: selectedEmployeeData.name 
+        } : undefined,
+      };
+
+      setLastSale(saleData);
+      setShowInvoice(true);
+
       toast({ title: '✅ Venda registrada!', description: `Total: R$ ${totalToPay.toFixed(2)}` });
 
       // Reset
       setCartItems([]);
       setSelectedClient('');
       setSelectedPetId('');
+      setSelectedEmployee('');
       cashRegister.refresh();
       pdvData.refresh();
 
@@ -253,30 +317,44 @@ const FrenteCaixa = () => {
     }
   };
 
+  // Low stock warning
+  const lowStockProducts = pdvData.getLowStockProducts();
+
   return (
-    <div className="p-6 max-w-[1600px] mx-auto">
+    <div className="p-4 lg:p-6 max-w-[1800px] mx-auto">
       {/* Header */}
-      <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="mb-6">
-        <div className="flex items-center justify-between">
+      <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="mb-4 lg:mb-6">
+        <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
-            <h1 className="text-3xl font-display font-bold text-foreground flex items-center gap-3">
-              <ShoppingCart className="w-8 h-8 text-primary" />
+            <h1 className="text-2xl lg:text-3xl font-display font-bold text-foreground flex items-center gap-3">
+              <ShoppingCart className="w-7 h-7 lg:w-8 lg:h-8 text-primary" />
               PDV - Ponto de Venda
             </h1>
-            <p className="text-muted-foreground mt-1">Vendas unificadas: Produtos + Serviços</p>
+            <p className="text-muted-foreground mt-1 text-sm lg:text-base">Vendas unificadas: Produtos + Serviços</p>
           </div>
-          {hasCaixaModule && !cashRegister.currentCash && (
-            <Badge variant="destructive" className="flex items-center gap-1">
-              <Lock className="w-4 h-4" />
-              Caixa Fechado
-            </Badge>
-          )}
+          <div className="flex items-center gap-3">
+            {lowStockProducts.length > 0 && (
+              <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300">
+                <AlertTriangle className="w-3 h-3 mr-1" />
+                {lowStockProducts.length} produto(s) estoque baixo
+              </Badge>
+            )}
+            {hasCaixaModule && !cashRegister.currentCash && (
+              <Badge variant="destructive" className="flex items-center gap-1">
+                <Lock className="w-4 h-4" />
+                Caixa Fechado
+              </Badge>
+            )}
+            <Button variant="outline" size="sm" onClick={() => pdvData.refresh()}>
+              <RefreshCw className="w-4 h-4" />
+            </Button>
+          </div>
         </div>
       </motion.div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left: Selection + Products */}
-        <div className="lg:col-span-5 space-y-6">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6">
+        {/* Left: Selection + Products/Services */}
+        <div className="lg:col-span-5 space-y-4 lg:space-y-6">
           {/* Client/Pet/Employee Selection */}
           <Card className="border-0 shadow-soft">
             <CardHeader className="pb-2">
@@ -286,42 +364,63 @@ const FrenteCaixa = () => {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <Label className="text-xs">Cliente</Label>
                   <Select value={selectedClient} onValueChange={v => { setSelectedClient(v); setSelectedPetId(''); }}>
-                    <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                    <SelectTrigger><SelectValue placeholder="Selecione cliente" /></SelectTrigger>
                     <SelectContent>
-                      {pdvData.clients.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                      {pdvData.clients.map(c => (
+                        <SelectItem key={c.id} value={c.id}>
+                          <div className="flex items-center gap-2">
+                            <User className="w-3 h-3" />
+                            {c.name}
+                          </div>
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
                 <div>
                   <Label className="text-xs">Pet</Label>
                   <Select value={selectedPetId} onValueChange={setSelectedPetId} disabled={!selectedClient}>
-                    <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                    <SelectTrigger><SelectValue placeholder="Selecione pet" /></SelectTrigger>
                     <SelectContent>
-                      {filteredPets.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                      {filteredPets.map(p => (
+                        <SelectItem key={p.id} value={p.id}>
+                          <div className="flex items-center gap-2">
+                            <Dog className="w-3 h-3" />
+                            {p.name} ({p.species})
+                          </div>
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
               </div>
+              
               {hasComissaoModule && (
                 <div>
-                  <Label className="text-xs">Vendedor</Label>
+                  <Label className="text-xs">Vendedor/Atendente</Label>
                   <Select value={selectedEmployee} onValueChange={setSelectedEmployee}>
-                    <SelectTrigger><SelectValue placeholder="Selecione vendedor (opcional)" /></SelectTrigger>
+                    <SelectTrigger><SelectValue placeholder="Selecione vendedor (para comissão)" /></SelectTrigger>
                     <SelectContent>
-                      {pdvData.employees.map(e => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}
+                      {pdvData.employees.map(e => (
+                        <SelectItem key={e.id} value={e.id}>
+                          {e.name} - {e.role}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
               )}
+
+              {/* Active plan indicator */}
               {activePlan && (
                 <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-xl">
-                  <Gift className="w-5 h-5 text-green-600" />
+                  <Receipt className="w-5 h-5 text-green-600" />
                   <div>
-                    <p className="font-medium text-green-800 text-sm">{selectedPet?.name} tem plano ativo</p>
+                    <p className="font-medium text-green-800 text-sm">{selectedPet?.name} tem plano ativo!</p>
                     <p className="text-xs text-green-600">{remainingCredits} crédito(s) disponível(is)</p>
                   </div>
                 </div>
@@ -333,36 +432,87 @@ const FrenteCaixa = () => {
           <Card className="border-0 shadow-soft">
             <Tabs value={activeTab} onValueChange={setActiveTab}>
               <CardHeader className="pb-2">
-                <TabsList className="w-full">
-                  <TabsTrigger value="servicos" className="flex-1">Serviços</TabsTrigger>
-                  {hasProdutosModule && <TabsTrigger value="produtos" className="flex-1">Produtos</TabsTrigger>}
-                  <TabsTrigger value="extra" className="flex-1">Avulso</TabsTrigger>
+                <TabsList className="w-full grid grid-cols-3">
+                  <TabsTrigger value="servicos" className="text-xs sm:text-sm">
+                    <Scissors className="w-4 h-4 mr-1 hidden sm:inline" />
+                    Serviços
+                  </TabsTrigger>
+                  {hasProdutosModule && (
+                    <TabsTrigger value="produtos" className="text-xs sm:text-sm">
+                      Produtos
+                    </TabsTrigger>
+                  )}
+                  <TabsTrigger value="extra" className="text-xs sm:text-sm">Avulso</TabsTrigger>
                 </TabsList>
               </CardHeader>
               <CardContent>
                 <TabsContent value="servicos" className="mt-0">
-                  <div className="text-center py-6 text-muted-foreground">
-                    <Scissors className="w-10 h-10 mx-auto mb-2 opacity-50" />
-                    <p className="text-sm">Selecione um cliente e pet para carregar serviços pendentes automaticamente.</p>
-                  </div>
+                  {selectedClient && selectedPetId ? (
+                    <div className="text-center py-6 text-muted-foreground">
+                      <Scissors className="w-10 h-10 mx-auto mb-2 opacity-50" />
+                      <p className="text-sm">
+                        {cartItems.filter(i => i.type.startsWith('service_')).length > 0 
+                          ? `${cartItems.filter(i => i.type.startsWith('service_')).length} serviço(s) carregado(s) automaticamente`
+                          : 'Nenhum serviço pendente encontrado'
+                        }
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="text-center py-6 text-muted-foreground">
+                      <User className="w-10 h-10 mx-auto mb-2 opacity-50" />
+                      <p className="text-sm">Selecione um cliente e pet para carregar serviços pendentes.</p>
+                    </div>
+                  )}
                 </TabsContent>
+                
                 {hasProdutosModule && (
                   <TabsContent value="produtos" className="mt-0">
-                    <ProductCatalog products={pdvData.products} onAddToCart={addToCart} />
+                    <ProductCatalog 
+                      products={pdvData.products} 
+                      onAddToCart={addToCart} 
+                    />
                   </TabsContent>
                 )}
+                
                 <TabsContent value="extra" className="mt-0 space-y-4">
                   <div className="space-y-3">
-                    <Input placeholder="Descrição" value={extraDescription} onChange={e => setExtraDescription(e.target.value)} />
+                    <div>
+                      <Label className="text-xs">Descrição do item</Label>
+                      <Input 
+                        placeholder="Ex: Serviço extra, Taxa de entrega..." 
+                        value={extraDescription} 
+                        onChange={e => setExtraDescription(e.target.value)} 
+                      />
+                    </div>
                     <div className="flex gap-2">
-                      <Input placeholder="Valor (R$)" value={extraPrice} onChange={e => setExtraPrice(e.target.value)} />
-                      <Button onClick={addExtraItem}><Plus className="w-4 h-4" /></Button>
+                      <div className="flex-1">
+                        <Label className="text-xs">Valor (R$)</Label>
+                        <Input 
+                          placeholder="0,00" 
+                          value={extraPrice} 
+                          onChange={e => setExtraPrice(e.target.value)} 
+                        />
+                      </div>
+                      <Button onClick={addExtraItem} className="mt-5">
+                        <Plus className="w-4 h-4 mr-1" />
+                        Adicionar
+                      </Button>
                     </div>
                   </div>
                 </TabsContent>
               </CardContent>
             </Tabs>
           </Card>
+
+          {/* Client/Pet History */}
+          {(selectedClient || selectedPetId) && (
+            <ClientPetHistory
+              clientId={selectedClient}
+              petId={selectedPetId}
+              clientName={selectedClientData?.name}
+              petName={selectedPet?.name}
+            />
+          )}
         </div>
 
         {/* Middle: Cart */}
@@ -378,18 +528,29 @@ const FrenteCaixa = () => {
               </CardTitle>
             </CardHeader>
             <CardContent className="flex-1 flex flex-col">
-              <Cart items={cartItems} onRemoveItem={removeFromCart} onUpdateQuantity={updateQuantity} onApplyDiscount={applyDiscount} />
+              <Cart 
+                items={cartItems} 
+                onRemoveItem={removeFromCart} 
+                onUpdateQuantity={updateQuantity} 
+                onApplyDiscount={applyDiscount} 
+              />
 
+              {/* Totals */}
               <div className="pt-4 mt-4 border-t space-y-2">
-                <div className="flex justify-between text-sm"><span>Subtotal</span><span>R$ {subtotal.toFixed(2)}</span></div>
+                <div className="flex justify-between text-sm">
+                  <span>Subtotal</span>
+                  <span>R$ {subtotal.toFixed(2)}</span>
+                </div>
                 {(totalDiscount + planDiscount) > 0 && (
                   <div className="flex justify-between text-sm text-green-600">
-                    <span>Descontos</span><span>- R$ {(totalDiscount + planDiscount).toFixed(2)}</span>
+                    <span>Descontos</span>
+                    <span>- R$ {(totalDiscount + planDiscount).toFixed(2)}</span>
                   </div>
                 )}
                 <Separator />
                 <div className="flex justify-between text-xl font-bold">
-                  <span>Total</span><span className="text-primary">R$ {totalToPay.toFixed(2)}</span>
+                  <span>Total</span>
+                  <span className="text-primary">R$ {totalToPay.toFixed(2)}</span>
                 </div>
               </div>
             </CardContent>
@@ -397,42 +558,14 @@ const FrenteCaixa = () => {
         </div>
 
         {/* Right: Payment + Cash */}
-        <div className="lg:col-span-3 space-y-6">
-          {/* Payment */}
-          <Card className="border-0 shadow-soft">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">Pagamento</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-2">
-                {paymentMethods.map(m => {
-                  const Icon = m.icon;
-                  return (
-                    <button
-                      key={m.value}
-                      onClick={() => setSelectedPayment(m.value)}
-                      className={cn(
-                        'p-3 rounded-xl border-2 flex flex-col items-center gap-1 transition-all',
-                        selectedPayment === m.value ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/30'
-                      )}
-                    >
-                      <Icon className={cn('w-5 h-5', selectedPayment === m.value ? 'text-primary' : 'text-muted-foreground')} />
-                      <span className={cn('text-xs font-medium', selectedPayment === m.value ? 'text-primary' : 'text-muted-foreground')}>{m.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-
-              <Button
-                className="w-full h-14 text-lg bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700"
-                onClick={handleFinalizeSale}
-                disabled={isLoading || cartItems.length === 0 || (hasCaixaModule && !cashRegister.currentCash)}
-              >
-                <Check className="w-5 h-5 mr-2" />
-                {isLoading ? 'Registrando...' : `Finalizar R$ ${totalToPay.toFixed(2)}`}
-              </Button>
-            </CardContent>
-          </Card>
+        <div className="lg:col-span-3 space-y-4 lg:space-y-6">
+          {/* Payment Panel */}
+          <PaymentPanel
+            totalToPay={totalToPay}
+            onFinalize={handleFinalizeSale}
+            isLoading={isLoading}
+            disabled={cartItems.length === 0 || (hasCaixaModule && !cashRegister.currentCash)}
+          />
 
           {/* Cash Register */}
           {hasCaixaModule && (
@@ -449,13 +582,25 @@ const FrenteCaixa = () => {
 
           {/* Today's Total */}
           <Card className="border-0 shadow-soft bg-gradient-to-br from-primary to-primary/80 text-white">
-            <CardContent className="p-6">
-              <p className="text-white/80 text-sm">Total de Hoje</p>
-              <p className="text-3xl font-bold">R$ {cashRegister.totalSalesToday.toFixed(2)}</p>
+            <CardContent className="p-4 lg:p-6">
+              <div className="flex items-center gap-2 text-white/80 mb-1">
+                <DollarSign className="w-5 h-5" />
+                <span className="text-sm">Total de Hoje</span>
+              </div>
+              <p className="text-2xl lg:text-3xl font-bold">
+                R$ {cashRegister.totalSalesToday.toFixed(2)}
+              </p>
             </CardContent>
           </Card>
         </div>
       </div>
+
+      {/* Invoice Modal */}
+      <InvoiceModal
+        open={showInvoice}
+        onClose={() => setShowInvoice(false)}
+        sale={lastSale}
+      />
     </div>
   );
 };
