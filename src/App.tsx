@@ -4,8 +4,6 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { MainLayout } from "@/components/layout/MainLayout";
-import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
-import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import BanhoTosa from "./pages/BanhoTosa";
 import GoogleCallback from "./pages/GoogleCallback";
@@ -31,76 +29,20 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <Routes>
-          {/* Public routes */}
-          <Route path="/auth" element={<Auth />} />
           <Route path="/google-callback" element={<GoogleCallback />} />
-          
-          {/* Protected routes */}
-          <Route path="/" element={
-            <ProtectedRoute>
-              <MainLayout><Dashboard /></MainLayout>
-            </ProtectedRoute>
-          } />
-          <Route path="/banho-tosa" element={
-            <ProtectedRoute>
-              <MainLayout><BanhoTosa /></MainLayout>
-            </ProtectedRoute>
-          } />
-          <Route path="/hotel-creche" element={
-            <ProtectedRoute>
-              <MainLayout><HotelCreche /></MainLayout>
-            </ProtectedRoute>
-          } />
-          <Route path="/planos" element={
-            <ProtectedRoute>
-              <MainLayout><Planos /></MainLayout>
-            </ProtectedRoute>
-          } />
-          <Route path="/clientes" element={
-            <ProtectedRoute>
-              <MainLayout><Clientes /></MainLayout>
-            </ProtectedRoute>
-          } />
-          <Route path="/lembretes" element={
-            <ProtectedRoute>
-              <MainLayout><Lembretes /></MainLayout>
-            </ProtectedRoute>
-          } />
-          <Route path="/inativos" element={
-            <ProtectedRoute>
-              <MainLayout><Inativos /></MainLayout>
-            </ProtectedRoute>
-          } />
-          <Route path="/caixa" element={
-            <ProtectedRoute>
-              <MainLayout><FrenteCaixa /></MainLayout>
-            </ProtectedRoute>
-          } />
-          <Route path="/whatsapp" element={
-            <ProtectedRoute>
-              <MainLayout><WhatsAppPanel /></MainLayout>
-            </ProtectedRoute>
-          } />
-          <Route path="/importar" element={
-            <ProtectedRoute>
-              <MainLayout><Importar /></MainLayout>
-            </ProtectedRoute>
-          } />
-          <Route path="/tabela-valores" element={
-            <ProtectedRoute>
-              <MainLayout><TabelaValores /></MainLayout>
-            </ProtectedRoute>
-          } />
-          <Route path="/servicos-do-dia" element={
-            <ProtectedRoute>
-              <MainLayout><ServicosDoDia /></MainLayout>
-            </ProtectedRoute>
-          } />
-          <Route path="/rota-do-dia" element={
-            <ProtectedRoute>
-              <MainLayout><RotaDoDia /></MainLayout>
-            </ProtectedRoute>
-          } />
+          <Route path="/" element={<MainLayout><Dashboard /></MainLayout>} />
+          <Route path="/banho-tosa" element={<MainLayout><BanhoTosa /></MainLayout>} />
+          <Route path="/hotel-creche" element={<MainLayout><HotelCreche /></MainLayout>} />
+          <Route path="/planos" element={<MainLayout><Planos /></MainLayout>} />
+          <Route path="/clientes" element={<MainLayout><Clientes /></MainLayout>} />
+          <Route path="/lembretes" element={<MainLayout><Lembretes /></MainLayout>} />
+          <Route path="/inativos" element={<MainLayout><Inativos /></MainLayout>} />
+          <Route path="/caixa" element={<MainLayout><FrenteCaixa /></MainLayout>} />
+          <Route path="/whatsapp" element={<MainLayout><WhatsAppPanel /></MainLayout>} />
+          <Route path="/importar" element={<MainLayout><Importar /></MainLayout>} />
+          <Route path="/tabela-valores" element={<MainLayout><TabelaValores /></MainLayout>} />
+          <Route path="/servicos-do-dia" element={<MainLayout><ServicosDoDia /></MainLayout>} />
+          <Route path="/rota-do-dia" element={<MainLayout><RotaDoDia /></MainLayout>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
