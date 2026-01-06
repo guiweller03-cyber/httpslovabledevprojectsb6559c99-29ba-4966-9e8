@@ -130,6 +130,81 @@ export type Database = {
         }
         Relationships: []
       }
+      cash_movements: {
+        Row: {
+          amount: number
+          cash_register_id: string | null
+          created_at: string | null
+          id: string
+          performed_by: string | null
+          reason: string | null
+          type: string
+        }
+        Insert: {
+          amount: number
+          cash_register_id?: string | null
+          created_at?: string | null
+          id?: string
+          performed_by?: string | null
+          reason?: string | null
+          type: string
+        }
+        Update: {
+          amount?: number
+          cash_register_id?: string | null
+          created_at?: string | null
+          id?: string
+          performed_by?: string | null
+          reason?: string | null
+          type?: string
+        }
+        Relationships: []
+      }
+      cash_register: {
+        Row: {
+          closed_at: string | null
+          closed_by: string | null
+          closing_amount: number | null
+          created_at: string | null
+          difference: number | null
+          expected_amount: number | null
+          id: string
+          notes: string | null
+          opened_at: string | null
+          opened_by: string | null
+          opening_amount: number
+          status: string
+        }
+        Insert: {
+          closed_at?: string | null
+          closed_by?: string | null
+          closing_amount?: number | null
+          created_at?: string | null
+          difference?: number | null
+          expected_amount?: number | null
+          id?: string
+          notes?: string | null
+          opened_at?: string | null
+          opened_by?: string | null
+          opening_amount?: number
+          status?: string
+        }
+        Update: {
+          closed_at?: string | null
+          closed_by?: string | null
+          closing_amount?: number | null
+          created_at?: string | null
+          difference?: number | null
+          expected_amount?: number | null
+          id?: string
+          notes?: string | null
+          opened_at?: string | null
+          opened_by?: string | null
+          opening_amount?: number
+          status?: string
+        }
+        Relationships: []
+      }
       client_plans: {
         Row: {
           active: boolean | null
@@ -250,6 +325,89 @@ export type Database = {
           zip_code?: string | null
         }
         Relationships: []
+      }
+      commissions: {
+        Row: {
+          amount: number
+          created_at: string | null
+          employee_id: string | null
+          id: string
+          paid_at: string | null
+          rate: number
+          sale_id: string | null
+          sale_item_id: string | null
+          status: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string | null
+          employee_id?: string | null
+          id?: string
+          paid_at?: string | null
+          rate: number
+          sale_id?: string | null
+          sale_item_id?: string | null
+          status?: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string | null
+          employee_id?: string | null
+          id?: string
+          paid_at?: string | null
+          rate?: number
+          sale_id?: string | null
+          sale_item_id?: string | null
+          status?: string
+        }
+        Relationships: []
+      }
+      employees: {
+        Row: {
+          active: boolean | null
+          commission_rate: number | null
+          created_at: string | null
+          email: string | null
+          id: string
+          name: string
+          phone: string | null
+          profile_id: string | null
+          role: string
+          updated_at: string | null
+        }
+        Insert: {
+          active?: boolean | null
+          commission_rate?: number | null
+          created_at?: string | null
+          email?: string | null
+          id?: string
+          name: string
+          phone?: string | null
+          profile_id?: string | null
+          role?: string
+          updated_at?: string | null
+        }
+        Update: {
+          active?: boolean | null
+          commission_rate?: number | null
+          created_at?: string | null
+          email?: string | null
+          id?: string
+          name?: string
+          phone?: string | null
+          profile_id?: string | null
+          role?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employees_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       google_calendar_tokens: {
         Row: {
@@ -596,6 +754,63 @@ export type Database = {
           },
         ]
       }
+      products: {
+        Row: {
+          active: boolean | null
+          barcode: string | null
+          brand: string | null
+          category: string
+          commission_rate: number | null
+          cost_price: number | null
+          created_at: string | null
+          description: string | null
+          id: string
+          min_stock_quantity: number | null
+          name: string
+          sale_price: number
+          sku: string | null
+          stock_quantity: number | null
+          unit: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          active?: boolean | null
+          barcode?: string | null
+          brand?: string | null
+          category?: string
+          commission_rate?: number | null
+          cost_price?: number | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          min_stock_quantity?: number | null
+          name: string
+          sale_price: number
+          sku?: string | null
+          stock_quantity?: number | null
+          unit?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          active?: boolean | null
+          barcode?: string | null
+          brand?: string | null
+          category?: string
+          commission_rate?: number | null
+          cost_price?: number | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          min_stock_quantity?: number | null
+          name?: string
+          sale_price?: number
+          sku?: string | null
+          stock_quantity?: number | null
+          unit?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -619,6 +834,114 @@ export type Database = {
           email?: string | null
           full_name?: string | null
           id?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      sale_items: {
+        Row: {
+          commission_rate: number | null
+          covered_by_plan: boolean | null
+          created_at: string | null
+          description: string
+          discount_amount: number | null
+          id: string
+          item_type: string
+          pet_id: string | null
+          product_id: string | null
+          quantity: number
+          sale_id: string | null
+          source_id: string | null
+          total_price: number
+          unit_price: number
+        }
+        Insert: {
+          commission_rate?: number | null
+          covered_by_plan?: boolean | null
+          created_at?: string | null
+          description: string
+          discount_amount?: number | null
+          id?: string
+          item_type: string
+          pet_id?: string | null
+          product_id?: string | null
+          quantity?: number
+          sale_id?: string | null
+          source_id?: string | null
+          total_price: number
+          unit_price: number
+        }
+        Update: {
+          commission_rate?: number | null
+          covered_by_plan?: boolean | null
+          created_at?: string | null
+          description?: string
+          discount_amount?: number | null
+          id?: string
+          item_type?: string
+          pet_id?: string | null
+          product_id?: string | null
+          quantity?: number
+          sale_id?: string | null
+          source_id?: string | null
+          total_price?: number
+          unit_price?: number
+        }
+        Relationships: []
+      }
+      sales: {
+        Row: {
+          cash_register_id: string | null
+          client_id: string | null
+          created_at: string | null
+          discount_amount: number | null
+          discount_percent: number | null
+          employee_id: string | null
+          id: string
+          invoice_number: string | null
+          notes: string | null
+          payment_method: string
+          payment_status: string
+          pet_id: string | null
+          subtotal: number
+          tax_amount: number | null
+          total_amount: number
+          updated_at: string | null
+        }
+        Insert: {
+          cash_register_id?: string | null
+          client_id?: string | null
+          created_at?: string | null
+          discount_amount?: number | null
+          discount_percent?: number | null
+          employee_id?: string | null
+          id?: string
+          invoice_number?: string | null
+          notes?: string | null
+          payment_method: string
+          payment_status?: string
+          pet_id?: string | null
+          subtotal?: number
+          tax_amount?: number | null
+          total_amount?: number
+          updated_at?: string | null
+        }
+        Update: {
+          cash_register_id?: string | null
+          client_id?: string | null
+          created_at?: string | null
+          discount_amount?: number | null
+          discount_percent?: number | null
+          employee_id?: string | null
+          id?: string
+          invoice_number?: string | null
+          notes?: string | null
+          payment_method?: string
+          payment_status?: string
+          pet_id?: string | null
+          subtotal?: number
+          tax_amount?: number | null
+          total_amount?: number
           updated_at?: string | null
         }
         Relationships: []
