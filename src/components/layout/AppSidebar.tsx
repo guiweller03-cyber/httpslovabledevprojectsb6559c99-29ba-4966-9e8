@@ -14,16 +14,13 @@ import {
   Bell,
   Settings,
   ClipboardList,
-  Car,
-  LogOut
+  Car
 } from 'lucide-react';
-import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useAuth } from '@/hooks/useAuth';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
 const navItems = [
   { title: 'Dashboard', url: '/', icon: LayoutDashboard },
@@ -44,17 +41,6 @@ const navItems = [
 export function AppSidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
-  const navigate = useNavigate();
-  const { user, signOut } = useAuth();
-
-  const handleSignOut = async () => {
-    await signOut();
-    navigate('/auth');
-  };
-
-  const userInitials = user?.email?.substring(0, 2).toUpperCase() || 'U';
-  const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Usuário';
-  const userAvatar = user?.user_metadata?.avatar_url;
 
   return (
     <motion.aside
@@ -140,64 +126,8 @@ export function AppSidebar() {
         </ul>
       </nav>
 
-      {/* User Info & Logout */}
-      <div className="p-3 border-t border-sidebar-border space-y-2">
-        {/* User info */}
-        <div className={cn(
-          "flex items-center gap-3 px-3 py-2 rounded-lg bg-sidebar-accent/50",
-          collapsed && "justify-center px-0"
-        )}>
-          <Avatar className="w-8 h-8">
-            <AvatarImage src={userAvatar} />
-            <AvatarFallback className="bg-primary text-primary-foreground text-xs">
-              {userInitials}
-            </AvatarFallback>
-          </Avatar>
-          <AnimatePresence mode="wait">
-            {!collapsed && (
-              <motion.div
-                initial={{ opacity: 0, width: 0 }}
-                animate={{ opacity: 1, width: 'auto' }}
-                exit={{ opacity: 0, width: 0 }}
-                className="flex-1 min-w-0"
-              >
-                <p className="text-sm font-medium text-sidebar-foreground truncate">
-                  {userName}
-                </p>
-                <p className="text-xs text-sidebar-foreground/60 truncate">
-                  {user?.email}
-                </p>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-
-        {/* Logout button */}
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={handleSignOut}
-          className={cn(
-            "w-full text-sidebar-foreground/70 hover:text-red-400 hover:bg-red-500/10",
-            collapsed ? "justify-center" : "justify-start"
-          )}
-        >
-          <LogOut className="w-5 h-5" />
-          <AnimatePresence mode="wait">
-            {!collapsed && (
-              <motion.span
-                initial={{ opacity: 0, width: 0 }}
-                animate={{ opacity: 1, width: 'auto' }}
-                exit={{ opacity: 0, width: 0 }}
-                className="ml-2"
-              >
-                Sair
-              </motion.span>
-            )}
-          </AnimatePresence>
-        </Button>
-
-        {/* Collapse Toggle */}
+      {/* Collapse Toggle */}
+      <div className="p-3 border-t border-sidebar-border">
         <Button
           variant="ghost"
           size="sm"
