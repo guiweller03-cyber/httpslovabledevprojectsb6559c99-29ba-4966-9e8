@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { MainLayout } from "@/components/layout/MainLayout";
 import Dashboard from "./pages/Dashboard";
 import BanhoTosa from "./pages/BanhoTosa";
+import GoogleCallback from "./pages/GoogleCallback";
 import HotelCreche from "./pages/HotelCreche";
 import Planos from "./pages/Planos";
 import Clientes from "./pages/Clientes";
@@ -42,6 +43,7 @@ const App = () => (
             <Route path="/tabela-valores" element={<TabelaValores />} />
             <Route path="/servicos-do-dia" element={<ServicosDoDia />} />
             <Route path="/rota-do-dia" element={<RotaDoDia />} />
+            <Route path="/google-callback" element={<GoogleCallback />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </MainLayout>
