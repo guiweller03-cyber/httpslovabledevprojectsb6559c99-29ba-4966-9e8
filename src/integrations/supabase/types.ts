@@ -596,6 +596,33 @@ export type Database = {
           },
         ]
       }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string | null
+          email: string | null
+          full_name: string | null
+          id: string
+          updated_at: string | null
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string | null
+          email?: string | null
+          full_name?: string | null
+          id: string
+          updated_at?: string | null
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string | null
+          email?: string | null
+          full_name?: string | null
+          id?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       service_addons: {
         Row: {
           active: boolean | null
@@ -653,15 +680,97 @@ export type Database = {
         }
         Relationships: []
       }
+      tenant_settings: {
+        Row: {
+          business_name: string | null
+          created_at: string | null
+          id: string
+          mod_caixa: boolean | null
+          mod_clinica: boolean | null
+          mod_comissao: boolean | null
+          mod_dashboard_completo: boolean | null
+          mod_estoque: boolean | null
+          mod_financeiro_avancado: boolean | null
+          mod_hotel: boolean | null
+          mod_marketing: boolean | null
+          mod_pdv: boolean | null
+          mod_petshop: boolean | null
+          mod_produtos: boolean | null
+          plan_type: Database["public"]["Enums"]["plan_type"]
+          updated_at: string | null
+        }
+        Insert: {
+          business_name?: string | null
+          created_at?: string | null
+          id?: string
+          mod_caixa?: boolean | null
+          mod_clinica?: boolean | null
+          mod_comissao?: boolean | null
+          mod_dashboard_completo?: boolean | null
+          mod_estoque?: boolean | null
+          mod_financeiro_avancado?: boolean | null
+          mod_hotel?: boolean | null
+          mod_marketing?: boolean | null
+          mod_pdv?: boolean | null
+          mod_petshop?: boolean | null
+          mod_produtos?: boolean | null
+          plan_type?: Database["public"]["Enums"]["plan_type"]
+          updated_at?: string | null
+        }
+        Update: {
+          business_name?: string | null
+          created_at?: string | null
+          id?: string
+          mod_caixa?: boolean | null
+          mod_clinica?: boolean | null
+          mod_comissao?: boolean | null
+          mod_dashboard_completo?: boolean | null
+          mod_estoque?: boolean | null
+          mod_financeiro_avancado?: boolean | null
+          mod_hotel?: boolean | null
+          mod_marketing?: boolean | null
+          mod_pdv?: boolean | null
+          mod_petshop?: boolean | null
+          mod_produtos?: boolean | null
+          plan_type?: Database["public"]["Enums"]["plan_type"]
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      user_roles: {
+        Row: {
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "manager" | "employee"
+      plan_type: "basic" | "hotel" | "premium"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -788,6 +897,9 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "manager", "employee"],
+      plan_type: ["basic", "hotel", "premium"],
+    },
   },
 } as const
