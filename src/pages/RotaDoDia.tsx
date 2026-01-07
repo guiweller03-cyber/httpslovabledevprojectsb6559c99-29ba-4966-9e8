@@ -7,14 +7,14 @@ import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
-// Logistics types that involve company pickup or delivery
-const COMPANY_LOGISTICS = ['tutor_empresa', 'empresa_tutor', 'empresa_empresa'];
+// Logistics types that involve TraxiDog pickup or delivery
+const COMPANY_LOGISTICS = ['tutor_traxidog', 'traxidog_tutor', 'traxidog_traxidog'];
 
 const LOGISTICS_LABELS: Record<string, { label: string; color: string }> = {
-  tutor_tutor: { label: 'Tutor Leva e Busca', color: 'bg-blue-500' },
-  tutor_empresa: { label: 'Tutor Leva / Empresa Busca', color: 'bg-yellow-500' },
-  empresa_tutor: { label: 'Empresa Leva / Tutor Busca', color: 'bg-purple-500' },
-  empresa_empresa: { label: 'Empresa Leva e Busca', color: 'bg-orange-500' },
+  tutor_tutor: { label: 'Tutor leva e traz', color: 'bg-blue-500' },
+  tutor_traxidog: { label: 'Tutor leva / TraxiDog entrega', color: 'bg-yellow-500' },
+  traxidog_tutor: { label: 'TraxiDog busca / Tutor busca', color: 'bg-purple-500' },
+  traxidog_traxidog: { label: 'TraxiDog leva e traz', color: 'bg-orange-500' },
 };
 
 interface PetDB {
@@ -114,12 +114,12 @@ const RotaDoDia = () => {
           logistics_type: logisticsType,
         };
         
-        // Empresa busca (empresa_tutor ou empresa_empresa)
-        if (logisticsType === 'empresa_tutor' || logisticsType === 'empresa_empresa') {
+        // TraxiDog busca (traxidog_tutor ou traxidog_traxidog)
+        if (logisticsType === 'traxidog_tutor' || logisticsType === 'traxidog_traxidog') {
           pickupList.push(petData);
         }
-        // Empresa entrega (tutor_empresa ou empresa_empresa)
-        if (logisticsType === 'tutor_empresa' || logisticsType === 'empresa_empresa') {
+        // TraxiDog entrega (tutor_traxidog ou traxidog_traxidog)
+        if (logisticsType === 'tutor_traxidog' || logisticsType === 'traxidog_traxidog') {
           deliveryList.push(petData);
         }
       }
@@ -136,7 +136,7 @@ const RotaDoDia = () => {
         const serviceLabel = stay.is_creche ? 'Creche' : 'Hotel';
         const logisticsType = pet.logistics_type || 'tutor_tutor';
         
-        if (checkInDate === today && (logisticsType === 'empresa_tutor' || logisticsType === 'empresa_empresa')) {
+        if (checkInDate === today && (logisticsType === 'traxidog_tutor' || logisticsType === 'traxidog_traxidog')) {
           pickupList.push({
             id: pet.id,
             name: pet.name,
@@ -153,7 +153,7 @@ const RotaDoDia = () => {
           });
         }
         
-        if (checkOutDate === today && (logisticsType === 'tutor_empresa' || logisticsType === 'empresa_empresa')) {
+        if (checkOutDate === today && (logisticsType === 'tutor_traxidog' || logisticsType === 'traxidog_traxidog')) {
           deliveryList.push({
             id: pet.id,
             name: pet.name,

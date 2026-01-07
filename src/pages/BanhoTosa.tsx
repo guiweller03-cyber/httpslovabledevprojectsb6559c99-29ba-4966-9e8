@@ -148,7 +148,7 @@ const BanhoTosa = () => {
     datetime: '',
     notes: '',
     selectedAddons: [] as string[],
-    responsavel: '' as 'cliente' | 'traxidog' | '',
+    responsavel: '' as 'tutor_tutor' | 'tutor_traxidog' | 'traxidog_tutor' | 'traxidog_traxidog' | '',
   });
 
   // Calculated price state
@@ -491,8 +491,8 @@ const BanhoTosa = () => {
     // Validação do responsável por trazer o pet
     if (!formData.responsavel) {
       toast({
-        title: "Selecione quem vai trazer o pet",
-        description: "Escolha entre Cliente ou TraxiDog.",
+        title: "Selecione a logística de transporte",
+        description: "Escolha uma das 4 opções de transporte.",
         variant: "destructive",
       });
       return;
@@ -757,27 +757,39 @@ const BanhoTosa = () => {
                   />
                 </div>
 
-                {/* Quem vai trazer o pet - OBRIGATÓRIO */}
+                {/* Logística - OBRIGATÓRIO */}
                 <div>
-                  <Label>Quem vai trazer o pet? *</Label>
+                  <Label>Logística de transporte *</Label>
                   <Select 
                     value={formData.responsavel}
-                    onValueChange={(value: 'cliente' | 'traxidog') => setFormData(prev => ({ ...prev, responsavel: value }))}
+                    onValueChange={(value: 'tutor_tutor' | 'tutor_traxidog' | 'traxidog_tutor' | 'traxidog_traxidog') => setFormData(prev => ({ ...prev, responsavel: value }))}
                   >
                     <SelectTrigger className={!formData.responsavel ? "border-destructive/50" : ""}>
                       <SelectValue placeholder="Selecione uma opção" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="cliente">
+                      <SelectItem value="tutor_tutor">
                         <span className="flex items-center gap-2">
                           <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-                          Cliente / Tutor
+                          Tutor leva e traz
                         </span>
                       </SelectItem>
-                      <SelectItem value="traxidog">
+                      <SelectItem value="tutor_traxidog">
+                        <span className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-yellow-500"></span>
+                          Tutor leva / TraxiDog entrega
+                        </span>
+                      </SelectItem>
+                      <SelectItem value="traxidog_tutor">
+                        <span className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-purple-500"></span>
+                          TraxiDog busca / Tutor busca
+                        </span>
+                      </SelectItem>
+                      <SelectItem value="traxidog_traxidog">
                         <span className="flex items-center gap-2">
                           <span className="w-2 h-2 rounded-full bg-orange-500"></span>
-                          TraxiDog
+                          TraxiDog leva e traz
                         </span>
                       </SelectItem>
                     </SelectContent>
