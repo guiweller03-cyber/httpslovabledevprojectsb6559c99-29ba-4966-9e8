@@ -7,16 +7,6 @@ import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
-// Logistics types that involve TraxiDog pickup or delivery
-const COMPANY_LOGISTICS = ['tutor_traxidog', 'traxidog_tutor', 'traxidog_traxidog'];
-
-const LOGISTICS_LABELS: Record<string, { label: string; color: string }> = {
-  tutor_tutor: { label: 'Tutor leva e traz', color: 'bg-blue-500' },
-  tutor_traxidog: { label: 'Tutor leva / TraxiDog entrega', color: 'bg-yellow-500' },
-  traxidog_tutor: { label: 'TraxiDog busca / Tutor busca', color: 'bg-purple-500' },
-  traxidog_traxidog: { label: 'TraxiDog leva e traz', color: 'bg-orange-500' },
-};
-
 interface PetDB {
   id: string;
   name: string;
@@ -24,7 +14,6 @@ interface PetDB {
   address?: string | null;
   neighborhood?: string | null;
   zip_code?: string | null;
-  logistics_type?: string | null;
   pickup_time?: string | null;
   delivery_time?: string | null;
 }
@@ -38,26 +27,36 @@ interface ClientDB {
   city?: string | null;
 }
 
-interface PetWithPickup {
+interface AppointmentDB {
   id: string;
-  name: string;
+  client_id: string;
+  pet_id: string;
+  service_type: string;
+  start_datetime: string;
+  status: string | null;
+  rota_buscar?: boolean | null;
+  rota_entregar?: boolean | null;
+}
+
+interface RouteItem {
+  id: string;
+  pet_name: string;
   address: string | null;
   neighborhood: string | null;
-  pickup_time: string | null;
-  delivery_time: string | null;
+  time: string | null;
   client_id: string;
   client_name: string;
   client_whatsapp: string;
   service_type: string;
   service_id: string;
-  logistics_type: string;
 }
 
 const RotaDoDia = () => {
-  const [pickupPets, setPickupPets] = useState<PetWithPickup[]>([]);
-  const [deliveryPets, setDeliveryPets] = useState<PetWithPickup[]>([]);
+  const [pickupPets, setPickupPets] = useState<RouteItem[]>([]);
+  const [deliveryPets, setDeliveryPets] = useState<RouteItem[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Data de hoje no timezone local (Brasil -3)
   const today = format(new Date(), 'yyyy-MM-dd');
 
   useEffect(() => {
@@ -67,123 +66,73 @@ const RotaDoDia = () => {
   const fetchRoutePets = async () => {
     setLoading(true);
 
-    // Buscar pets que envolvem logística da empresa
-    const [petsRes, clientsRes, appointmentsRes, hotelRes] = await Promise.all([
+    // Buscar agendamentos do dia com rota_buscar ou rota_entregar = true
+    const [petsRes, clientsRes, appointmentsRes] = await Promise.all([
       supabase.from('pets').select('*'),
       supabase.from('clients').select('*'),
       supabase.from('bath_grooming_appointments').select('*')
         .gte('start_datetime', `${today}T00:00:00`)
         .lt('start_datetime', `${today}T23:59:59`)
         .neq('status', 'cancelado'),
-      supabase.from('hotel_stays').select('*')
-        .neq('status', 'cancelado'),
     ]);
 
-    // Cast to local types since DB may have new columns not in generated types
-    const allPets = (petsRes.data || []) as unknown as PetDB[];
-    // Filter pets with company logistics (empresa_tutor, tutor_empresa, empresa_empresa)
-    const pets = allPets.filter(p => p.logistics_type && COMPANY_LOGISTICS.includes(p.logistics_type));
+    const pets = (petsRes.data || []) as unknown as PetDB[];
     const clients = (clientsRes.data || []) as unknown as ClientDB[];
-    const appointments = appointmentsRes.data || [];
-    const hotelStays = hotelRes.data || [];
+    const appointments = (appointmentsRes.data || []) as unknown as AppointmentDB[];
 
     const getClient = (clientId: string) => clients.find(c => c.id === clientId);
+    const getPet = (petId: string) => pets.find(p => p.id === petId);
 
-    // Criar lista de pets para buscar (pickup) e entregar (delivery)
-    const pickupList: PetWithPickup[] = [];
-    const deliveryList: PetWithPickup[] = [];
+    const pickupList: RouteItem[] = [];
+    const deliveryList: RouteItem[] = [];
 
-    // Agendamentos de banho/tosa hoje - incluir se empresa busca ou empresa entrega
+    // Filtrar por rota_buscar e rota_entregar
     appointments.forEach(apt => {
-      const pet = pets.find(p => p.id === apt.pet_id);
-      if (pet) {
-        const client = getClient(pet.client_id);
-        const logisticsType = pet.logistics_type || 'tutor_tutor';
-        const petData: PetWithPickup = {
-          id: pet.id,
-          name: pet.name,
-          address: pet.address || client?.address || null,
-          neighborhood: pet.neighborhood || client?.neighborhood || null,
-          pickup_time: pet.pickup_time || null,
-          delivery_time: pet.delivery_time || null,
-          client_id: pet.client_id,
-          client_name: client?.name || 'N/A',
-          client_whatsapp: client?.whatsapp || '',
-          service_type: apt.service_type === 'banho' ? 'Banho' : 'Banho + Tosa',
-          service_id: apt.id,
-          logistics_type: logisticsType,
-        };
-        
-        // TraxiDog busca (traxidog_tutor ou traxidog_traxidog)
-        if (logisticsType === 'traxidog_tutor' || logisticsType === 'traxidog_traxidog') {
-          pickupList.push(petData);
-        }
-        // TraxiDog entrega (tutor_traxidog ou traxidog_traxidog)
-        if (logisticsType === 'tutor_traxidog' || logisticsType === 'traxidog_traxidog') {
-          deliveryList.push(petData);
-        }
-      }
-    });
-
-    // Hotel check-in hoje (buscar pet)
-    hotelStays.forEach(stay => {
-      const checkInDate = format(new Date(stay.check_in), 'yyyy-MM-dd');
-      const checkOutDate = format(new Date(stay.check_out), 'yyyy-MM-dd');
-      const pet = pets.find(p => p.id === stay.pet_id);
+      const pet = getPet(apt.pet_id);
+      const client = getClient(apt.client_id);
       
-      if (pet) {
-        const client = getClient(pet.client_id);
-        const serviceLabel = stay.is_creche ? 'Creche' : 'Hotel';
-        const logisticsType = pet.logistics_type || 'tutor_tutor';
-        
-        if (checkInDate === today && (logisticsType === 'traxidog_tutor' || logisticsType === 'traxidog_traxidog')) {
-          pickupList.push({
-            id: pet.id,
-            name: pet.name,
-            address: pet.address || client?.address || null,
-            neighborhood: pet.neighborhood || client?.neighborhood || null,
-            pickup_time: pet.pickup_time || null,
-            delivery_time: pet.delivery_time || null,
-            client_id: pet.client_id,
-            client_name: client?.name || 'N/A',
-            client_whatsapp: client?.whatsapp || '',
-            service_type: serviceLabel,
-            service_id: stay.id,
-            logistics_type: logisticsType,
-          });
-        }
-        
-        if (checkOutDate === today && (logisticsType === 'tutor_traxidog' || logisticsType === 'traxidog_traxidog')) {
-          deliveryList.push({
-            id: pet.id,
-            name: pet.name,
-            address: pet.address || client?.address || null,
-            neighborhood: pet.neighborhood || client?.neighborhood || null,
-            pickup_time: pet.pickup_time || null,
-            delivery_time: pet.delivery_time || null,
-            client_id: pet.client_id,
-            client_name: client?.name || 'N/A',
-            client_whatsapp: client?.whatsapp || '',
-            service_type: serviceLabel,
-            service_id: stay.id,
-            logistics_type: logisticsType,
-          });
-        }
+      if (!pet || !client) return;
+
+      const baseItem: RouteItem = {
+        id: apt.id,
+        pet_name: pet.name,
+        address: pet.address || client.address || null,
+        neighborhood: pet.neighborhood || client.neighborhood || null,
+        time: null,
+        client_id: client.id,
+        client_name: client.name,
+        client_whatsapp: client.whatsapp || '',
+        service_type: apt.service_type === 'banho' ? 'Banho' : 'Banho + Tosa',
+        service_id: apt.id,
+      };
+
+      // Se rota_buscar = true, adiciona na lista de buscar
+      if (apt.rota_buscar === true) {
+        pickupList.push({
+          ...baseItem,
+          time: pet.pickup_time || null,
+        });
+      }
+
+      // Se rota_entregar = true, adiciona na lista de entregar
+      if (apt.rota_entregar === true) {
+        deliveryList.push({
+          ...baseItem,
+          time: pet.delivery_time || null,
+        });
       }
     });
 
     // Ordenar por horário
-    pickupList.sort((a, b) => (a.pickup_time || '').localeCompare(b.pickup_time || ''));
-    deliveryList.sort((a, b) => (a.delivery_time || '').localeCompare(b.delivery_time || ''));
+    pickupList.sort((a, b) => (a.time || '99:99').localeCompare(b.time || '99:99'));
+    deliveryList.sort((a, b) => (a.time || '99:99').localeCompare(b.time || '99:99'));
 
     setPickupPets(pickupList);
     setDeliveryPets(deliveryList);
     setLoading(false);
   };
 
-  const PetRouteCard = ({ pet, type }: { pet: PetWithPickup; type: 'pickup' | 'delivery' }) => {
-    const logistics = LOGISTICS_LABELS[pet.logistics_type] || LOGISTICS_LABELS.tutor_tutor;
-    
+  const RouteCard = ({ item, type }: { item: RouteItem; type: 'pickup' | 'delivery' }) => {
     return (
       <motion.div
         initial={{ opacity: 0, x: -20 }}
@@ -192,58 +141,45 @@ const RotaDoDia = () => {
       >
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
-              <Dog className="w-5 h-5 text-primary" />
+            <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+              type === 'pickup' ? 'bg-blue-500/10' : 'bg-green-500/10'
+            }`}>
+              <Dog className={`w-5 h-5 ${type === 'pickup' ? 'text-blue-500' : 'text-green-500'}`} />
             </div>
             <div>
-              <p className="font-semibold">{pet.name}</p>
+              <p className="font-semibold">{item.pet_name}</p>
               <p className="text-sm text-muted-foreground flex items-center gap-1">
-                <User className="w-3 h-3" /> {pet.client_name}
+                <User className="w-3 h-3" /> {item.client_name}
               </p>
             </div>
           </div>
-          <Badge variant="outline">{pet.service_type}</Badge>
+          <Badge variant="outline">{item.service_type}</Badge>
         </div>
         
         <div className="mt-3 space-y-2">
-          {pet.address && (
+          {item.address && (
             <div className="flex items-start gap-2 text-sm">
               <MapPin className="w-4 h-4 text-muted-foreground flex-shrink-0 mt-0.5" />
-              <span>{pet.address}{pet.neighborhood ? `, ${pet.neighborhood}` : ''}</span>
+              <span>{item.address}{item.neighborhood ? `, ${item.neighborhood}` : ''}</span>
             </div>
           )}
           
-          <div className="flex items-center gap-4">
-            {type === 'pickup' && pet.pickup_time && (
-              <div className="flex items-center gap-1 text-sm">
-                <Clock className="w-4 h-4 text-muted-foreground" />
-                <span>Buscar: {pet.pickup_time}</span>
-              </div>
-            )}
-            {type === 'delivery' && pet.delivery_time && (
-              <div className="flex items-center gap-1 text-sm">
-                <Clock className="w-4 h-4 text-muted-foreground" />
-                <span>Entregar: {pet.delivery_time}</span>
-              </div>
-            )}
-          </div>
+          {item.time && (
+            <div className="flex items-center gap-1 text-sm">
+              <Clock className="w-4 h-4 text-muted-foreground" />
+              <span>{type === 'pickup' ? 'Buscar' : 'Entregar'}: {item.time}</span>
+            </div>
+          )}
           
-          {/* Logistics badge */}
-          <div className="flex items-center gap-2">
-            <span className={`text-xs px-2 py-0.5 rounded-full text-white ${logistics.color}`}>
-              {logistics.label}
-            </span>
-          </div>
-          
-          {pet.client_whatsapp && (
+          {item.client_whatsapp && (
             <a 
-              href={`https://wa.me/55${pet.client_whatsapp.replace(/\D/g, '')}`}
+              href={`https://wa.me/55${item.client_whatsapp.replace(/\D/g, '')}`}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-1 text-sm text-green-600 hover:underline"
             >
               <Phone className="w-4 h-4" />
-              {pet.client_whatsapp}
+              {item.client_whatsapp}
             </a>
           )}
         </div>
@@ -287,8 +223,8 @@ const RotaDoDia = () => {
                 Nenhum pet para buscar hoje
               </p>
             ) : (
-              pickupPets.map((pet, idx) => (
-                <PetRouteCard key={`pickup-${pet.service_id}-${idx}`} pet={pet} type="pickup" />
+              pickupPets.map((item) => (
+                <RouteCard key={`pickup-${item.service_id}`} item={item} type="pickup" />
               ))
             )}
           </CardContent>
@@ -312,8 +248,8 @@ const RotaDoDia = () => {
                 Nenhum pet para entregar hoje
               </p>
             ) : (
-              deliveryPets.map((pet, idx) => (
-                <PetRouteCard key={`delivery-${pet.service_id}-${idx}`} pet={pet} type="delivery" />
+              deliveryPets.map((item) => (
+                <RouteCard key={`delivery-${item.service_id}`} item={item} type="delivery" />
               ))
             )}
           </CardContent>

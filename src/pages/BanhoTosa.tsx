@@ -526,6 +526,10 @@ const BanhoTosa = () => {
     const startDate = new Date(formData.datetime);
     const endDate = new Date(startDate.getTime() + 60 * 60 * 1000); // +1 hour
 
+    // Calcular rota_buscar e rota_entregar baseado na logística
+    const rotaBuscar = formData.responsavel === 'traxidog_tutor' || formData.responsavel === 'traxidog_traxidog';
+    const rotaEntregar = formData.responsavel === 'tutor_traxidog' || formData.responsavel === 'traxidog_traxidog';
+
     const { data, error } = await supabase
       .from('bath_grooming_appointments')
       .insert({
@@ -539,7 +543,9 @@ const BanhoTosa = () => {
         price: calculatedPrice,
         optional_services: formData.selectedAddons,
         notes: formData.notes || null,
-      })
+        rota_buscar: rotaBuscar,
+        rota_entregar: rotaEntregar,
+      } as any)
       .select();
 
     setIsLoading(false);
