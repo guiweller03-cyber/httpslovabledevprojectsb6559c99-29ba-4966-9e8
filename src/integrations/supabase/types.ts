@@ -16,14 +16,18 @@ export type Database = {
     Tables: {
       bath_grooming_appointments: {
         Row: {
+          arrival_time: string | null
+          bath_start_time: string | null
           client_id: string
           client_plan_id: string | null
+          completed_time: string | null
           created_at: string | null
           end_datetime: string
           google_event_id: string | null
           grooming_type: string | null
           id: string
           is_plan_usage: boolean | null
+          kanban_status: string | null
           notes: string | null
           optional_services: string[] | null
           paid_at: string | null
@@ -37,14 +41,18 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          arrival_time?: string | null
+          bath_start_time?: string | null
           client_id: string
           client_plan_id?: string | null
+          completed_time?: string | null
           created_at?: string | null
           end_datetime: string
           google_event_id?: string | null
           grooming_type?: string | null
           id?: string
           is_plan_usage?: boolean | null
+          kanban_status?: string | null
           notes?: string | null
           optional_services?: string[] | null
           paid_at?: string | null
@@ -58,14 +66,18 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          arrival_time?: string | null
+          bath_start_time?: string | null
           client_id?: string
           client_plan_id?: string | null
+          completed_time?: string | null
           created_at?: string | null
           end_datetime?: string
           google_event_id?: string | null
           grooming_type?: string | null
           id?: string
           is_plan_usage?: boolean | null
+          kanban_status?: string | null
           notes?: string | null
           optional_services?: string[] | null
           paid_at?: string | null
@@ -115,6 +127,81 @@ export type Database = {
           service_type?: string
           total_baths?: number
           validity_days?: number | null
+        }
+        Relationships: []
+      }
+      cash_movements: {
+        Row: {
+          amount: number
+          cash_register_id: string | null
+          created_at: string | null
+          id: string
+          performed_by: string | null
+          reason: string | null
+          type: string
+        }
+        Insert: {
+          amount: number
+          cash_register_id?: string | null
+          created_at?: string | null
+          id?: string
+          performed_by?: string | null
+          reason?: string | null
+          type: string
+        }
+        Update: {
+          amount?: number
+          cash_register_id?: string | null
+          created_at?: string | null
+          id?: string
+          performed_by?: string | null
+          reason?: string | null
+          type?: string
+        }
+        Relationships: []
+      }
+      cash_register: {
+        Row: {
+          closed_at: string | null
+          closed_by: string | null
+          closing_amount: number | null
+          created_at: string | null
+          difference: number | null
+          expected_amount: number | null
+          id: string
+          notes: string | null
+          opened_at: string | null
+          opened_by: string | null
+          opening_amount: number
+          status: string
+        }
+        Insert: {
+          closed_at?: string | null
+          closed_by?: string | null
+          closing_amount?: number | null
+          created_at?: string | null
+          difference?: number | null
+          expected_amount?: number | null
+          id?: string
+          notes?: string | null
+          opened_at?: string | null
+          opened_by?: string | null
+          opening_amount?: number
+          status?: string
+        }
+        Update: {
+          closed_at?: string | null
+          closed_by?: string | null
+          closing_amount?: number | null
+          created_at?: string | null
+          difference?: number | null
+          expected_amount?: number | null
+          id?: string
+          notes?: string | null
+          opened_at?: string | null
+          opened_by?: string | null
+          opening_amount?: number
+          status?: string
         }
         Relationships: []
       }
@@ -238,6 +325,89 @@ export type Database = {
           zip_code?: string | null
         }
         Relationships: []
+      }
+      commissions: {
+        Row: {
+          amount: number
+          created_at: string | null
+          employee_id: string | null
+          id: string
+          paid_at: string | null
+          rate: number
+          sale_id: string | null
+          sale_item_id: string | null
+          status: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string | null
+          employee_id?: string | null
+          id?: string
+          paid_at?: string | null
+          rate: number
+          sale_id?: string | null
+          sale_item_id?: string | null
+          status?: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string | null
+          employee_id?: string | null
+          id?: string
+          paid_at?: string | null
+          rate?: number
+          sale_id?: string | null
+          sale_item_id?: string | null
+          status?: string
+        }
+        Relationships: []
+      }
+      employees: {
+        Row: {
+          active: boolean | null
+          commission_rate: number | null
+          created_at: string | null
+          email: string | null
+          id: string
+          name: string
+          phone: string | null
+          profile_id: string | null
+          role: string
+          updated_at: string | null
+        }
+        Insert: {
+          active?: boolean | null
+          commission_rate?: number | null
+          created_at?: string | null
+          email?: string | null
+          id?: string
+          name: string
+          phone?: string | null
+          profile_id?: string | null
+          role?: string
+          updated_at?: string | null
+        }
+        Update: {
+          active?: boolean | null
+          commission_rate?: number | null
+          created_at?: string | null
+          email?: string | null
+          id?: string
+          name?: string
+          phone?: string | null
+          profile_id?: string | null
+          role?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employees_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       google_calendar_tokens: {
         Row: {
@@ -520,6 +690,7 @@ export type Database = {
           delivery_time: string | null
           grooming_type: string | null
           id: string
+          logistics_type: string | null
           name: string
           neighborhood: string | null
           photo_url: string | null
@@ -540,6 +711,7 @@ export type Database = {
           delivery_time?: string | null
           grooming_type?: string | null
           id?: string
+          logistics_type?: string | null
           name: string
           neighborhood?: string | null
           photo_url?: string | null
@@ -560,6 +732,7 @@ export type Database = {
           delivery_time?: string | null
           grooming_type?: string | null
           id?: string
+          logistics_type?: string | null
           name?: string
           neighborhood?: string | null
           photo_url?: string | null
@@ -580,6 +753,198 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      products: {
+        Row: {
+          active: boolean | null
+          barcode: string | null
+          brand: string | null
+          category: string
+          commission_rate: number | null
+          cost_price: number | null
+          created_at: string | null
+          description: string | null
+          id: string
+          min_stock_quantity: number | null
+          name: string
+          sale_price: number
+          sku: string | null
+          stock_quantity: number | null
+          unit: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          active?: boolean | null
+          barcode?: string | null
+          brand?: string | null
+          category?: string
+          commission_rate?: number | null
+          cost_price?: number | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          min_stock_quantity?: number | null
+          name: string
+          sale_price: number
+          sku?: string | null
+          stock_quantity?: number | null
+          unit?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          active?: boolean | null
+          barcode?: string | null
+          brand?: string | null
+          category?: string
+          commission_rate?: number | null
+          cost_price?: number | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          min_stock_quantity?: number | null
+          name?: string
+          sale_price?: number
+          sku?: string | null
+          stock_quantity?: number | null
+          unit?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string | null
+          email: string | null
+          full_name: string | null
+          id: string
+          updated_at: string | null
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string | null
+          email?: string | null
+          full_name?: string | null
+          id: string
+          updated_at?: string | null
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string | null
+          email?: string | null
+          full_name?: string | null
+          id?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      sale_items: {
+        Row: {
+          commission_rate: number | null
+          covered_by_plan: boolean | null
+          created_at: string | null
+          description: string
+          discount_amount: number | null
+          id: string
+          item_type: string
+          pet_id: string | null
+          product_id: string | null
+          quantity: number
+          sale_id: string | null
+          source_id: string | null
+          total_price: number
+          unit_price: number
+        }
+        Insert: {
+          commission_rate?: number | null
+          covered_by_plan?: boolean | null
+          created_at?: string | null
+          description: string
+          discount_amount?: number | null
+          id?: string
+          item_type: string
+          pet_id?: string | null
+          product_id?: string | null
+          quantity?: number
+          sale_id?: string | null
+          source_id?: string | null
+          total_price: number
+          unit_price: number
+        }
+        Update: {
+          commission_rate?: number | null
+          covered_by_plan?: boolean | null
+          created_at?: string | null
+          description?: string
+          discount_amount?: number | null
+          id?: string
+          item_type?: string
+          pet_id?: string | null
+          product_id?: string | null
+          quantity?: number
+          sale_id?: string | null
+          source_id?: string | null
+          total_price?: number
+          unit_price?: number
+        }
+        Relationships: []
+      }
+      sales: {
+        Row: {
+          cash_register_id: string | null
+          client_id: string | null
+          created_at: string | null
+          discount_amount: number | null
+          discount_percent: number | null
+          employee_id: string | null
+          id: string
+          invoice_number: string | null
+          notes: string | null
+          payment_method: string
+          payment_status: string
+          pet_id: string | null
+          subtotal: number
+          tax_amount: number | null
+          total_amount: number
+          updated_at: string | null
+        }
+        Insert: {
+          cash_register_id?: string | null
+          client_id?: string | null
+          created_at?: string | null
+          discount_amount?: number | null
+          discount_percent?: number | null
+          employee_id?: string | null
+          id?: string
+          invoice_number?: string | null
+          notes?: string | null
+          payment_method: string
+          payment_status?: string
+          pet_id?: string | null
+          subtotal?: number
+          tax_amount?: number | null
+          total_amount?: number
+          updated_at?: string | null
+        }
+        Update: {
+          cash_register_id?: string | null
+          client_id?: string | null
+          created_at?: string | null
+          discount_amount?: number | null
+          discount_percent?: number | null
+          employee_id?: string | null
+          id?: string
+          invoice_number?: string | null
+          notes?: string | null
+          payment_method?: string
+          payment_status?: string
+          pet_id?: string | null
+          subtotal?: number
+          tax_amount?: number | null
+          total_amount?: number
+          updated_at?: string | null
+        }
+        Relationships: []
       }
       service_addons: {
         Row: {
@@ -638,15 +1003,97 @@ export type Database = {
         }
         Relationships: []
       }
+      tenant_settings: {
+        Row: {
+          business_name: string | null
+          created_at: string | null
+          id: string
+          mod_caixa: boolean | null
+          mod_clinica: boolean | null
+          mod_comissao: boolean | null
+          mod_dashboard_completo: boolean | null
+          mod_estoque: boolean | null
+          mod_financeiro_avancado: boolean | null
+          mod_hotel: boolean | null
+          mod_marketing: boolean | null
+          mod_pdv: boolean | null
+          mod_petshop: boolean | null
+          mod_produtos: boolean | null
+          plan_type: Database["public"]["Enums"]["plan_type"]
+          updated_at: string | null
+        }
+        Insert: {
+          business_name?: string | null
+          created_at?: string | null
+          id?: string
+          mod_caixa?: boolean | null
+          mod_clinica?: boolean | null
+          mod_comissao?: boolean | null
+          mod_dashboard_completo?: boolean | null
+          mod_estoque?: boolean | null
+          mod_financeiro_avancado?: boolean | null
+          mod_hotel?: boolean | null
+          mod_marketing?: boolean | null
+          mod_pdv?: boolean | null
+          mod_petshop?: boolean | null
+          mod_produtos?: boolean | null
+          plan_type?: Database["public"]["Enums"]["plan_type"]
+          updated_at?: string | null
+        }
+        Update: {
+          business_name?: string | null
+          created_at?: string | null
+          id?: string
+          mod_caixa?: boolean | null
+          mod_clinica?: boolean | null
+          mod_comissao?: boolean | null
+          mod_dashboard_completo?: boolean | null
+          mod_estoque?: boolean | null
+          mod_financeiro_avancado?: boolean | null
+          mod_hotel?: boolean | null
+          mod_marketing?: boolean | null
+          mod_pdv?: boolean | null
+          mod_petshop?: boolean | null
+          mod_produtos?: boolean | null
+          plan_type?: Database["public"]["Enums"]["plan_type"]
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      user_roles: {
+        Row: {
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "manager" | "employee"
+      plan_type: "basic" | "hotel" | "premium"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -773,6 +1220,9 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "manager", "employee"],
+      plan_type: ["basic", "hotel", "premium"],
+    },
   },
 } as const

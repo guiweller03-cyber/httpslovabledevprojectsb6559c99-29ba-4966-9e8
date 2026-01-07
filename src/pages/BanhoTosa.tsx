@@ -148,6 +148,7 @@ const BanhoTosa = () => {
     datetime: '',
     notes: '',
     selectedAddons: [] as string[],
+    responsavel: '' as 'cliente' | 'traxidog' | '',
   });
 
   // Calculated price state
@@ -487,6 +488,16 @@ const BanhoTosa = () => {
       return;
     }
 
+    // Validação do responsável por trazer o pet
+    if (!formData.responsavel) {
+      toast({
+        title: "Selecione quem vai trazer o pet",
+        description: "Escolha entre Cliente ou TraxiDog.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     // Define grooming_type baseado no serviço
     const groomingTypeToSave = formData.service === 'banho' ? 'banho' : formData.groomingType;
 
@@ -556,7 +567,8 @@ const BanhoTosa = () => {
       size: '',
       datetime: '', 
       notes: '',
-      selectedAddons: [] 
+      selectedAddons: [],
+      responsavel: '',
     });
     setCalculatedPrice(null);
     setBasePrice(0);
@@ -743,6 +755,33 @@ const BanhoTosa = () => {
                     value={formData.datetime}
                     onChange={(e) => setFormData(prev => ({ ...prev, datetime: e.target.value }))}
                   />
+                </div>
+
+                {/* Quem vai trazer o pet - OBRIGATÓRIO */}
+                <div>
+                  <Label>Quem vai trazer o pet? *</Label>
+                  <Select 
+                    value={formData.responsavel}
+                    onValueChange={(value: 'cliente' | 'traxidog') => setFormData(prev => ({ ...prev, responsavel: value }))}
+                  >
+                    <SelectTrigger className={!formData.responsavel ? "border-destructive/50" : ""}>
+                      <SelectValue placeholder="Selecione uma opção" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="cliente">
+                        <span className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                          Cliente / Tutor
+                        </span>
+                      </SelectItem>
+                      <SelectItem value="traxidog">
+                        <span className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-orange-500"></span>
+                          TraxiDog
+                        </span>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 {/* Observações */}
