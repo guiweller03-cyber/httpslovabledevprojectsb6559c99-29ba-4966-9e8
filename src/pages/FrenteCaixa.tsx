@@ -47,6 +47,16 @@ interface AppointmentDB {
   payment_method?: string | null;
   paid_at?: string | null;
   start_datetime: string;
+  optional_services?: string[] | null;
+  is_plan_usage?: boolean | null;
+  client_plan_id?: string | null;
+}
+
+interface ServiceAddon {
+  id: string;
+  name: string;
+  price: number;
+  active: boolean | null;
 }
 
 interface HotelStayDB {
@@ -161,6 +171,7 @@ const FrenteCaixa = () => {
   const [hotelStays, setHotelStays] = useState<HotelStayDB[]>([]);
   const [clientPlans, setClientPlans] = useState<ClientPlan[]>([]);
   const [servicePrices, setServicePrices] = useState<ServicePrice[]>([]);
+  const [serviceAddons, setServiceAddons] = useState<ServiceAddon[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   
@@ -235,6 +246,15 @@ const FrenteCaixa = () => {
       .select('*');
     
     if (!error) setServicePrices(data || []);
+  };
+
+  const fetchServiceAddons = async () => {
+    const { data, error } = await supabase
+      .from('service_addons')
+      .select('*')
+      .eq('active', true);
+    
+    if (!error) setServiceAddons(data || []);
   };
 
   // Build pending payments list - services FINALIZED but NOT PAID
@@ -327,6 +347,7 @@ const FrenteCaixa = () => {
         fetchHotelStays(),
         fetchClientPlans(),
         fetchServicePrices(),
+        fetchServiceAddons(),
       ]);
     };
     loadData();
@@ -405,7 +426,7 @@ const FrenteCaixa = () => {
     let usedCredits = 0;
 
     for (const apt of petAppointments) {
-      // Calculate price
+      // Calculate price for main service
       let price = apt.price || 0;
       if (!price) {
         const priceMatch = servicePrices.find(sp => 
@@ -415,27 +436,56 @@ const FrenteCaixa = () => {
         price = priceMatch?.price || 50;
       }
 
-      const canUseCredit = usedCredits < remainingCredits;
+      // Check if appointment uses plan credit OR has is_plan_usage flag
+      const isPlanUsage = Boolean(apt.is_plan_usage) || Boolean(apt.client_plan_id);
+      const canUseCredit = !isPlanUsage && usedCredits < remainingCredits;
       if (canUseCredit) usedCredits++;
+      
+      // Main service is covered by plan if is_plan_usage or we're using available credits
+      const mainServiceCovered = isPlanUsage || canUseCredit;
 
       const groomingLabel = apt.grooming_type 
         ? groomingTypeLabels[apt.grooming_type] || apt.grooming_type
         : groomingTypeLabels[apt.service_type] || apt.service_type;
 
+      // Add main service item
       items.push({
         id: `apt_${apt.id}`,
         type: 'banho_tosa',
-        description: groomingLabel,
+        description: mainServiceCovered ? `${groomingLabel} (Plano)` : groomingLabel,
         petName: pet.name,
         unitPrice: price,
         quantity: 1,
-        totalPrice: canUseCredit ? 0 : price,
-        coveredByPlan: canUseCredit,
+        totalPrice: mainServiceCovered ? 0 : price,
+        coveredByPlan: mainServiceCovered,
         sourceId: apt.id,
         petId: pet.id,
         serviceStatus: apt.status || 'agendado',
         paymentStatus: 'pendente' as PaymentStatus,
       });
+
+      // Add optional services (addons) - ALWAYS billed separately, even for plan usage
+      if (apt.optional_services && apt.optional_services.length > 0) {
+        for (const addonId of apt.optional_services) {
+          const addon = serviceAddons.find(sa => sa.id === addonId);
+          if (addon) {
+            items.push({
+              id: `addon_${apt.id}_${addonId}`,
+              type: 'extra',
+              description: addon.name,
+              petName: pet.name,
+              unitPrice: addon.price,
+              quantity: 1,
+              totalPrice: addon.price,
+              coveredByPlan: false, // Addons are NEVER covered by plan
+              sourceId: apt.id,
+              petId: pet.id,
+              serviceStatus: apt.status || 'agendado',
+              paymentStatus: 'pendente' as PaymentStatus,
+            });
+          }
+        }
+      }
     }
 
     // 2. Check for hotel stays that need billing (not paid yet)
@@ -470,7 +520,7 @@ const FrenteCaixa = () => {
     }
 
     setInvoiceItems(items);
-  }, [selectedPetId, selectedClient, pets, appointments, hotelStays, clientPlans, servicePrices]);
+  }, [selectedPetId, selectedClient, pets, appointments, hotelStays, clientPlans, servicePrices, serviceAddons]);
 
   // Add extra item
   const handleAddExtraItem = () => {

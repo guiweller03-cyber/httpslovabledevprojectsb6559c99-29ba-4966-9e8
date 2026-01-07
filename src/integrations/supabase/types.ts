@@ -35,6 +35,8 @@ export type Database = {
           payment_status: string | null
           pet_id: string
           price: number | null
+          rota_buscar: boolean | null
+          rota_entregar: boolean | null
           service_type: string
           start_datetime: string
           status: string | null
@@ -60,6 +62,8 @@ export type Database = {
           payment_status?: string | null
           pet_id: string
           price?: number | null
+          rota_buscar?: boolean | null
+          rota_entregar?: boolean | null
           service_type: string
           start_datetime: string
           status?: string | null
@@ -85,6 +89,8 @@ export type Database = {
           payment_status?: string | null
           pet_id?: string
           price?: number | null
+          rota_buscar?: boolean | null
+          rota_entregar?: boolean | null
           service_type?: string
           start_datetime?: string
           status?: string | null
