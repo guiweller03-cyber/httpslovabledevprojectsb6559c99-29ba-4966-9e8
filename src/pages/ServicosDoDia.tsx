@@ -40,6 +40,7 @@ interface Appointment {
   optional_services: string[] | null;
   is_plan_usage?: boolean | null;
   kanban_status?: string | null;
+  payment_status?: string | null;
 }
 
 interface Client {
@@ -280,25 +281,46 @@ export default function ServicosDoDia() {
     printWindow.print();
   };
 
+  // Navigate to FrenteCaixa with appointment data
+  const handleGoToCaixa = (apt: Appointment) => {
+    navigate(`/frente-caixa?appointmentId=${apt.id}`);
+  };
+
   const KanbanCard = ({ apt }: { apt: Appointment }) => {
     const pet = getPet(apt.pet_id);
     const client = getClient(apt.client_id);
     const logistics = LOGISTICS_LABELS[pet?.logistics_type || 'tutor_tutor'] || LOGISTICS_LABELS.tutor_tutor;
+    const isCompleted = (apt.kanban_status || 'espera') === 'concluido';
+    const isPaid = apt.payment_status === 'pago' || apt.payment_status === 'isento';
     
     return (
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        draggable
-        onDragStart={(e) => handleDragStart(e as any, apt.id)}
+        draggable={!isCompleted}
+        onDragStart={(e) => !isCompleted && handleDragStart(e as any, apt.id)}
+        onClick={() => isCompleted && !isPaid && handleGoToCaixa(apt)}
         className={cn(
-          "p-3 rounded-lg border-2 bg-card cursor-grab active:cursor-grabbing shadow-sm hover:shadow-md transition-all",
+          "p-3 rounded-lg border-2 bg-card shadow-sm hover:shadow-md transition-all",
           "border-l-4",
-          apt.is_plan_usage ? "border-l-green-500" : "border-l-blue-500"
+          apt.is_plan_usage ? "border-l-green-500" : "border-l-blue-500",
+          isCompleted && !isPaid 
+            ? "cursor-pointer hover:ring-2 hover:ring-primary hover:ring-offset-2" 
+            : !isCompleted 
+              ? "cursor-grab active:cursor-grabbing" 
+              : "opacity-60"
         )}
       >
         <div className="flex items-start gap-2">
-          <GripVertical className="w-4 h-4 text-muted-foreground flex-shrink-0 mt-1" />
+          {!isCompleted && (
+            <GripVertical className="w-4 h-4 text-muted-foreground flex-shrink-0 mt-1" />
+          )}
+          {isCompleted && !isPaid && (
+            <DollarSign className="w-4 h-4 text-green-600 flex-shrink-0 mt-1" />
+          )}
+          {isCompleted && isPaid && (
+            <CheckCircle2 className="w-4 h-4 text-muted-foreground flex-shrink-0 mt-1" />
+          )}
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between mb-1">
               <div className="flex items-center gap-2">
@@ -331,13 +353,23 @@ export default function ServicosDoDia() {
             </div>
             
             {/* Logistics badge */}
-            <div className="mt-2">
+            <div className="mt-2 flex items-center justify-between">
               <span className={cn(
                 "text-xs px-2 py-0.5 rounded-full text-white",
                 logistics.color
               )}>
                 {logistics.label}
               </span>
+              {isCompleted && !isPaid && (
+                <Badge className="bg-green-600 hover:bg-green-700 text-xs animate-pulse">
+                  💳 Cobrar
+                </Badge>
+              )}
+              {isCompleted && isPaid && (
+                <Badge variant="outline" className="text-xs text-muted-foreground">
+                  ✅ Pago
+                </Badge>
+              )}
             </div>
           </div>
         </div>

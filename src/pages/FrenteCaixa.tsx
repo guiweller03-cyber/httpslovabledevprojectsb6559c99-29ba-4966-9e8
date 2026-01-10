@@ -353,18 +353,33 @@ const FrenteCaixa = () => {
     loadData();
   }, []);
 
-  // Auto-select client/pet from URL params (when redirected from ServicosDoDia)
+  // Auto-select from URL params (when redirected from ServicosDoDia)
   useEffect(() => {
+    const appointmentIdParam = searchParams.get('appointmentId');
     const clientIdParam = searchParams.get('clientId');
     const petIdParam = searchParams.get('petId');
     
+    // Priority 1: Load from appointmentId (new flow from ServicosDoDia)
+    if (appointmentIdParam && appointments.length > 0 && clients.length > 0 && pets.length > 0) {
+      const appointment = appointments.find(a => a.id === appointmentIdParam);
+      if (appointment) {
+        setSelectedClient(appointment.client_id);
+        // Pet will be set after client is selected and filteredPets updates
+        setTimeout(() => {
+          setSelectedPetId(appointment.pet_id);
+        }, 100);
+      }
+      return;
+    }
+    
+    // Priority 2: Legacy params (clientId/petId)
     if (clientIdParam && clients.length > 0) {
       setSelectedClient(clientIdParam);
     }
     if (petIdParam && pets.length > 0 && clientIdParam === selectedClient) {
       setSelectedPetId(petIdParam);
     }
-  }, [searchParams, clients, pets, selectedClient]);
+  }, [searchParams, clients, pets, appointments, selectedClient]);
 
   // Build pending payments when data changes
   useEffect(() => {
