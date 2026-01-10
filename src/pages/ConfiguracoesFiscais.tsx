@@ -118,47 +118,47 @@ const ConfiguracoesFiscais = () => {
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      // Get or create company
+      // Get or create company - using type assertion for new tables
       const { data: companies, error: compError } = await supabase
-        .from('companies')
+        .from('companies' as any)
         .select('*')
         .limit(1);
 
       if (compError) throw compError;
 
-      let comp = companies?.[0];
+      let comp = ((companies as unknown) as Company[] | null)?.[0];
       
       if (!comp) {
         // Create default company
         const { data: newComp, error: createError } = await supabase
-          .from('companies')
+          .from('companies' as any)
           .insert({
             razao_social: 'Minha Empresa',
             cnpj: '',
-          })
+          } as any)
           .select()
           .single();
         
         if (createError) throw createError;
-        comp = newComp;
+        comp = (newComp as unknown) as Company;
       }
       
       setCompany(comp);
 
       // Get or create fiscal config
       const { data: configs, error: configError } = await supabase
-        .from('config_fiscal')
+        .from('config_fiscal' as any)
         .select('*')
         .eq('company_id', comp.id)
         .limit(1);
 
       if (configError) throw configError;
 
-      let cfg = configs?.[0];
+      let cfg = ((configs as unknown) as FiscalConfig[] | null)?.[0];
       
       if (!cfg) {
         const { data: newCfg, error: cfgCreateError } = await supabase
-          .from('config_fiscal')
+          .from('config_fiscal' as any)
           .insert({
             company_id: comp.id,
             tipo_nota: 'desativado',
@@ -169,25 +169,25 @@ const ConfiguracoesFiscais = () => {
             emitir_automatico: false,
             csosn_servicos: '102',
             csosn_produtos: '102',
-          })
+          } as any)
           .select()
           .single();
         
         if (cfgCreateError) throw cfgCreateError;
-        cfg = newCfg;
+        cfg = (newCfg as unknown) as FiscalConfig;
       }
       
       setConfig(cfg);
 
       // Get certificate
       const { data: certs } = await supabase
-        .from('certificados_digitais')
+        .from('certificados_digitais' as any)
         .select('*')
         .eq('company_id', comp.id)
         .eq('status', 'ativo')
         .limit(1);
 
-      setCertificate(certs?.[0] || null);
+      setCertificate(((certs as unknown) as Certificate[] | null)?.[0] || null);
 
       // Update form data
       setFormData({
@@ -234,7 +234,7 @@ const ConfiguracoesFiscais = () => {
     try {
       // Update company
       const { error: compError } = await supabase
-        .from('companies')
+        .from('companies' as any)
         .update({
           razao_social: formData.razao_social,
           nome_fantasia: formData.nome_fantasia,
@@ -250,14 +250,14 @@ const ConfiguracoesFiscais = () => {
           cep: formData.cep,
           telefone: formData.telefone,
           email: formData.email,
-        })
+        } as any)
         .eq('id', company.id);
 
       if (compError) throw compError;
 
       // Update config
       const { error: cfgError } = await supabase
-        .from('config_fiscal')
+        .from('config_fiscal' as any)
         .update({
           tipo_nota: formData.tipo_nota,
           ambiente: formData.ambiente,
@@ -267,7 +267,7 @@ const ConfiguracoesFiscais = () => {
           emitir_automatico: formData.emitir_automatico,
           csosn_servicos: formData.csosn_servicos,
           csosn_produtos: formData.csosn_produtos,
-        })
+        } as any)
         .eq('company_id', company.id);
 
       if (cfgError) throw cfgError;
@@ -352,7 +352,7 @@ const ConfiguracoesFiscais = () => {
         
         // Save certificate (password should be encrypted - for demo, we store hash)
         const { error } = await supabase
-          .from('certificados_digitais')
+          .from('certificados_digitais' as any)
           .insert({
             company_id: company.id,
             nome_arquivo: certFile.name,
@@ -360,7 +360,7 @@ const ConfiguracoesFiscais = () => {
             senha_hash: btoa(certPassword), // In production, use proper encryption
             validade: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(), // 1 year from now
             status: 'ativo',
-          });
+          } as any);
 
         if (error) throw error;
 

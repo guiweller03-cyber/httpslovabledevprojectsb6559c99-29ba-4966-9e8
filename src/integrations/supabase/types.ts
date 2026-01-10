@@ -211,6 +211,47 @@ export type Database = {
         }
         Relationships: []
       }
+      certificados_digitais: {
+        Row: {
+          certificado_base64: string | null
+          company_id: string
+          created_at: string | null
+          id: string
+          nome_arquivo: string
+          senha_hash: string | null
+          status: string | null
+          validade: string
+        }
+        Insert: {
+          certificado_base64?: string | null
+          company_id: string
+          created_at?: string | null
+          id?: string
+          nome_arquivo: string
+          senha_hash?: string | null
+          status?: string | null
+          validade: string
+        }
+        Update: {
+          certificado_base64?: string | null
+          company_id?: string
+          created_at?: string | null
+          id?: string
+          nome_arquivo?: string
+          senha_hash?: string | null
+          status?: string | null
+          validade?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "certificados_digitais_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       client_plans: {
         Row: {
           active: boolean | null
@@ -367,6 +408,119 @@ export type Database = {
           status?: string
         }
         Relationships: []
+      }
+      companies: {
+        Row: {
+          bairro: string | null
+          cep: string | null
+          cnpj: string | null
+          complemento: string | null
+          created_at: string | null
+          email: string | null
+          id: string
+          inscricao_estadual: string | null
+          inscricao_municipal: string | null
+          logradouro: string | null
+          municipio: string | null
+          nome_fantasia: string | null
+          numero: string | null
+          razao_social: string
+          telefone: string | null
+          uf: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          bairro?: string | null
+          cep?: string | null
+          cnpj?: string | null
+          complemento?: string | null
+          created_at?: string | null
+          email?: string | null
+          id?: string
+          inscricao_estadual?: string | null
+          inscricao_municipal?: string | null
+          logradouro?: string | null
+          municipio?: string | null
+          nome_fantasia?: string | null
+          numero?: string | null
+          razao_social: string
+          telefone?: string | null
+          uf?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          bairro?: string | null
+          cep?: string | null
+          cnpj?: string | null
+          complemento?: string | null
+          created_at?: string | null
+          email?: string | null
+          id?: string
+          inscricao_estadual?: string | null
+          inscricao_municipal?: string | null
+          logradouro?: string | null
+          municipio?: string | null
+          nome_fantasia?: string | null
+          numero?: string | null
+          razao_social?: string
+          telefone?: string | null
+          uf?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      config_fiscal: {
+        Row: {
+          ambiente: string | null
+          company_id: string
+          created_at: string | null
+          csosn_produtos: string | null
+          csosn_servicos: string | null
+          emitir_automatico: boolean | null
+          id: string
+          numero_atual: number | null
+          regime_tributario: string | null
+          serie: string | null
+          tipo_nota: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          ambiente?: string | null
+          company_id: string
+          created_at?: string | null
+          csosn_produtos?: string | null
+          csosn_servicos?: string | null
+          emitir_automatico?: boolean | null
+          id?: string
+          numero_atual?: number | null
+          regime_tributario?: string | null
+          serie?: string | null
+          tipo_nota?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          ambiente?: string | null
+          company_id?: string
+          created_at?: string | null
+          csosn_produtos?: string | null
+          csosn_servicos?: string | null
+          emitir_automatico?: boolean | null
+          id?: string
+          numero_atual?: number | null
+          regime_tributario?: string | null
+          serie?: string | null
+          tipo_nota?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "config_fiscal_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       employees: {
         Row: {
@@ -581,6 +735,72 @@ export type Database = {
             columns: ["client_plan_id"]
             isOneToOne: false
             referencedRelation: "client_plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      notas_fiscais: {
+        Row: {
+          ambiente: string | null
+          chave: string | null
+          company_id: string
+          created_at: string | null
+          erro_sefaz: string | null
+          id: string
+          numero: number
+          pdf_url: string | null
+          referencia_focus: string | null
+          sale_id: string | null
+          serie: string
+          status: string | null
+          tipo: string
+          xml: string | null
+        }
+        Insert: {
+          ambiente?: string | null
+          chave?: string | null
+          company_id: string
+          created_at?: string | null
+          erro_sefaz?: string | null
+          id?: string
+          numero: number
+          pdf_url?: string | null
+          referencia_focus?: string | null
+          sale_id?: string | null
+          serie: string
+          status?: string | null
+          tipo: string
+          xml?: string | null
+        }
+        Update: {
+          ambiente?: string | null
+          chave?: string | null
+          company_id?: string
+          created_at?: string | null
+          erro_sefaz?: string | null
+          id?: string
+          numero?: number
+          pdf_url?: string | null
+          referencia_focus?: string | null
+          sale_id?: string | null
+          serie?: string
+          status?: string | null
+          tipo?: string
+          xml?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notas_fiscais_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notas_fiscais_sale_id_fkey"
+            columns: ["sale_id"]
+            isOneToOne: false
+            referencedRelation: "sales"
             referencedColumns: ["id"]
           },
         ]
