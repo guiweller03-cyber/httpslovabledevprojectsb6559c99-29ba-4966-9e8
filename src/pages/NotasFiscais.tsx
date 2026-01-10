@@ -74,7 +74,7 @@ const NotasFiscais = () => {
     setIsLoading(true);
     try {
       const { data, error } = await supabase
-        .from('notas_fiscais')
+        .from('notas_fiscais' as any)
         .select(`
           *,
           sales:sale_id (
@@ -88,11 +88,11 @@ const NotasFiscais = () => {
 
       if (error) throw error;
 
-      const formattedNotas = (data || []).map(nota => ({
+      const formattedNotas = ((data as any[]) || []).map(nota => ({
         ...nota,
         client_name: (nota.sales as any)?.clients?.name || 'N/A',
         total_amount: (nota.sales as any)?.total_amount || 0,
-      }));
+      })) as NotaFiscal[];
 
       setNotas(formattedNotas);
     } catch (error) {
@@ -154,12 +154,13 @@ const NotasFiscais = () => {
   const handleRefreshStatus = async (nota: NotaFiscal) => {
     setIsRefreshing(nota.id);
     try {
-      const { data: company } = await supabase
-        .from('companies')
+      const { data: companyData } = await supabase
+        .from('companies' as any)
         .select('id')
         .limit(1)
         .single();
 
+      const company = (companyData as unknown) as { id: string } | null;
       if (!company) throw new Error('Empresa não encontrada');
 
       const { data, error } = await supabase.functions.invoke('focus-nfe', {
@@ -202,12 +203,13 @@ const NotasFiscais = () => {
 
     setIsCanceling(true);
     try {
-      const { data: company } = await supabase
-        .from('companies')
+      const { data: companyData } = await supabase
+        .from('companies' as any)
         .select('id')
         .limit(1)
         .single();
 
+      const company = (companyData as unknown) as { id: string } | null;
       if (!company) throw new Error('Empresa não encontrada');
 
       const { data, error } = await supabase.functions.invoke('focus-nfe', {
