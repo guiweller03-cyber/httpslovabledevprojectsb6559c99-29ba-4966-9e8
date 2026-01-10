@@ -1,1 +1,4 @@
 project_id = "kdhxyfmqrieneorvcjqb"
+
+[functions.focus-nfe]
+verify_jwt = false
