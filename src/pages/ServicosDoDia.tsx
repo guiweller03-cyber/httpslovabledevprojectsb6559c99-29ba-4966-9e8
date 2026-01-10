@@ -283,7 +283,7 @@ export default function ServicosDoDia() {
 
   // Navigate to FrenteCaixa with appointment data
   const handleGoToCaixa = (apt: Appointment) => {
-    navigate(`/frente-caixa?appointmentId=${apt.id}`);
+    navigate(`/caixa?appointmentId=${apt.id}`);
   };
 
   const KanbanCard = ({ apt }: { apt: Appointment }) => {
