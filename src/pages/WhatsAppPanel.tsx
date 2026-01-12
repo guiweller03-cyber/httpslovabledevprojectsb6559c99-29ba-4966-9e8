@@ -242,11 +242,27 @@ const WhatsAppPanel = () => {
           className="lg:col-span-3 h-full"
         >
           <Card className="border-0 shadow-soft h-full">
-            <ConversationList
-              conversations={conversations}
-              selectedId={selectedConversation?.id || null}
-              onSelect={handleSelectConversation}
-            />
+          <ConversationList
+            conversations={conversations}
+            selectedId={selectedConversation?.id || null}
+            onSelect={handleSelectConversation}
+            onAssumeConversation={(conv) => {
+              setSelectedConversation(conv);
+              handleAssumeConversation();
+            }}
+            onPauseAI={(conv) => {
+              setSelectedConversation(conv);
+              handlePauseAI();
+            }}
+            onFinishConversation={(conv) => {
+              setConversations(prev =>
+                prev.map(c =>
+                  c.id === conv.id ? { ...c, status: 'finalizado' as ConversationStatus } : c
+                )
+              );
+              toast({ title: "✅ Conversa finalizada" });
+            }}
+          />
           </Card>
         </motion.div>
 
