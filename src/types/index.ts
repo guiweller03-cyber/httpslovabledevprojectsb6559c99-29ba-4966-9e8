@@ -35,6 +35,7 @@ export interface Pet {
   // Service preferences
   preferredService?: PreferredService;
   groomingType?: GroomingType;
+  notes?: string;
 }
 
 // Grooming (Banho & Tosa) types
@@ -99,11 +100,12 @@ export interface Sale {
 
 // WhatsApp types
 export type MessageSource = 'ia' | 'humano';
-export type ConversationStatus = 'ia_ativa' | 'humano_ativo' | 'pausada';
+export type ConversationStatus = 'novo' | 'em_atendimento' | 'finalizado' | 'ia_ativa' | 'humano_ativo' | 'pausada';
 
 export interface WhatsAppMessage {
   id: string;
   clientId: string;
+  conversationId: string;
   direction: 'incoming' | 'outgoing';
   content: string;
   source: MessageSource;
@@ -116,9 +118,11 @@ export interface WhatsAppConversation {
   clientName: string;
   clientWhatsapp: string;
   status: ConversationStatus;
+  aiEnabled: boolean;
   lastMessage: string;
   lastMessageAt: Date;
   unreadCount: number;
+  registrationComplete: boolean;
 }
 
 // Dashboard stats

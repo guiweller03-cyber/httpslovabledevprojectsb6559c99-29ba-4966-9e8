@@ -987,12 +987,14 @@ export type Database = {
           brand: string | null
           category: string
           commission_rate: number | null
+          control_stock: boolean | null
           cost_price: number | null
           created_at: string | null
           description: string | null
           id: string
           min_stock_quantity: number | null
           name: string
+          photo_url: string | null
           sale_price: number
           sku: string | null
           stock_quantity: number | null
@@ -1005,12 +1007,14 @@ export type Database = {
           brand?: string | null
           category?: string
           commission_rate?: number | null
+          control_stock?: boolean | null
           cost_price?: number | null
           created_at?: string | null
           description?: string | null
           id?: string
           min_stock_quantity?: number | null
           name: string
+          photo_url?: string | null
           sale_price: number
           sku?: string | null
           stock_quantity?: number | null
@@ -1023,12 +1027,14 @@ export type Database = {
           brand?: string | null
           category?: string
           commission_rate?: number | null
+          control_stock?: boolean | null
           cost_price?: number | null
           created_at?: string | null
           description?: string | null
           id?: string
           min_stock_quantity?: number | null
           name?: string
+          photo_url?: string | null
           sale_price?: number
           sku?: string | null
           stock_quantity?: number | null
@@ -1228,6 +1234,54 @@ export type Database = {
           size_category?: string
         }
         Relationships: []
+      }
+      stock_movements: {
+        Row: {
+          created_at: string | null
+          id: string
+          performed_by: string | null
+          product_id: string
+          quantity: number
+          reason: string | null
+          sale_id: string | null
+          type: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          performed_by?: string | null
+          product_id: string
+          quantity: number
+          reason?: string | null
+          sale_id?: string | null
+          type: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          performed_by?: string | null
+          product_id?: string
+          quantity?: number
+          reason?: string | null
+          sale_id?: string | null
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_movements_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_movements_sale_id_fkey"
+            columns: ["sale_id"]
+            isOneToOne: false
+            referencedRelation: "sales"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       tenant_settings: {
         Row: {

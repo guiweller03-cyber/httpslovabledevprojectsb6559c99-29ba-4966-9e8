@@ -1,22 +1,13 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { MessageSquare, Bot, User, Pause, Play, UserCheck, Circle, ExternalLink, Activity } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Badge } from '@/components/ui/badge';
+import { MessageSquare, Activity } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
 import { mockConversations, mockMessages } from '@/data/mockData';
 import { WhatsAppConversation, WhatsAppMessage, ConversationStatus } from '@/types';
 import { useToast } from '@/hooks/use-toast';
-import { cn } from '@/lib/utils';
-import { formatDistanceToNow } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
-
-const statusConfig: Record<ConversationStatus, { label: string; color: string; bgColor: string }> = {
-  ia_ativa: { label: 'IA Ativa', color: 'text-primary', bgColor: 'bg-primary/10' },
-  humano_ativo: { label: 'Humano', color: 'text-secondary', bgColor: 'bg-secondary/10' },
-  pausada: { label: 'Pausada', color: 'text-muted-foreground', bgColor: 'bg-muted' },
-};
+import ConversationList from '@/components/whatsapp/ConversationList';
+import ChatPanel from '@/components/whatsapp/ChatPanel';
+import ContextPanel from '@/components/whatsapp/ContextPanel';
 
 // Simula disparo de webhook para o n8n
 const triggerWebhook = async (event: string, data: Record<string, unknown>) => {
@@ -25,19 +16,67 @@ const triggerWebhook = async (event: string, data: Record<string, unknown>) => {
   return true;
 };
 
+// Add missing fields to mock data
+const enhancedConversations: WhatsAppConversation[] = mockConversations.map(conv => ({
+  ...conv,
+  aiEnabled: conv.status === 'ia_ativa',
+  registrationComplete: conv.clientId !== '3', // Ana Oliveira will be incomplete for demo
+}));
+
+const enhancedMessages: WhatsAppMessage[] = mockMessages.map(msg => ({
+  ...msg,
+  conversationId: '1', // Assign to first conversation for demo
+}));
+
 const WhatsAppPanel = () => {
   const { toast } = useToast();
-  const [conversations, setConversations] = useState<WhatsAppConversation[]>(mockConversations);
-  const [messages] = useState<WhatsAppMessage[]>(mockMessages);
-  const [selectedConversation, setSelectedConversation] = useState<WhatsAppConversation | null>(
-    mockConversations[0]
-  );
+  const [conversations, setConversations] = useState<WhatsAppConversation[]>(enhancedConversations);
+  const [messages, setMessages] = useState<WhatsAppMessage[]>(enhancedMessages);
+  const [selectedConversation, setSelectedConversation] = useState<WhatsAppConversation | null>(null);
 
   const conversationMessages = selectedConversation
     ? messages.filter(m => m.clientId === selectedConversation.clientId)
     : [];
 
-  // Webhook: Humano assumiu a conversa
+  const handleSelectConversation = (conversation: WhatsAppConversation) => {
+    setSelectedConversation(conversation);
+    
+    // Mark as read
+    setConversations(prev =>
+      prev.map(c =>
+        c.id === conversation.id ? { ...c, unreadCount: 0 } : c
+      )
+    );
+  };
+
+  const handleToggleAI = async (enabled: boolean) => {
+    if (!selectedConversation) return;
+
+    await triggerWebhook(enabled ? 'ia_ativada' : 'ia_desativada', {
+      conversationId: selectedConversation.id,
+      clientId: selectedConversation.clientId,
+      clientWhatsapp: selectedConversation.clientWhatsapp,
+      enabled,
+      timestamp: new Date().toISOString(),
+    });
+
+    const newStatus: ConversationStatus = enabled ? 'ia_ativa' : 'humano_ativo';
+
+    setConversations(prev =>
+      prev.map(c =>
+        c.id === selectedConversation.id
+          ? { ...c, aiEnabled: enabled, status: newStatus }
+          : c
+      )
+    );
+    setSelectedConversation({ ...selectedConversation, aiEnabled: enabled, status: newStatus });
+
+    toast({
+      title: enabled ? "🤖 IA Ativada" : "👤 IA Desativada",
+      description: `Webhook disparado para o n8n. IA ${enabled ? 'ativada' : 'desativada'} para esta conversa.`,
+    });
+  };
+
   const handleAssumeConversation = async () => {
     if (!selectedConversation) return;
 
@@ -51,11 +90,11 @@ const WhatsAppPanel = () => {
     setConversations(prev =>
       prev.map(c =>
         c.id === selectedConversation.id
-          ? { ...c, status: 'humano_ativo' as ConversationStatus }
+          ? { ...c, status: 'humano_ativo' as ConversationStatus, aiEnabled: false }
           : c
       )
     );
-    setSelectedConversation({ ...selectedConversation, status: 'humano_ativo' });
+    setSelectedConversation({ ...selectedConversation, status: 'humano_ativo', aiEnabled: false });
 
     toast({
       title: "👤 Humano Assumiu Conversa",
@@ -63,7 +102,6 @@ const WhatsAppPanel = () => {
     });
   };
 
-  // Webhook: Pausar IA
   const handlePauseAI = async () => {
     if (!selectedConversation) return;
 
@@ -89,7 +127,6 @@ const WhatsAppPanel = () => {
     });
   };
 
-  // Webhook: Retomar IA
   const handleResumeAI = async () => {
     if (!selectedConversation) return;
 
@@ -103,11 +140,11 @@ const WhatsAppPanel = () => {
     setConversations(prev =>
       prev.map(c =>
         c.id === selectedConversation.id
-          ? { ...c, status: 'ia_ativa' as ConversationStatus }
+          ? { ...c, status: 'ia_ativa' as ConversationStatus, aiEnabled: true }
           : c
       )
     );
-    setSelectedConversation({ ...selectedConversation, status: 'ia_ativa' });
+    setSelectedConversation({ ...selectedConversation, status: 'ia_ativa', aiEnabled: true });
 
     toast({
       title: "▶️ IA Retomada",
@@ -115,279 +152,134 @@ const WhatsAppPanel = () => {
     });
   };
 
+  const handleSendMessage = async (content: string) => {
+    if (!selectedConversation || !content.trim()) return;
+
+    const newMessage: WhatsAppMessage = {
+      id: `msg-${Date.now()}`,
+      clientId: selectedConversation.clientId,
+      conversationId: selectedConversation.id,
+      direction: 'outgoing',
+      content,
+      source: 'humano',
+      timestamp: new Date(),
+    };
+
+    // Add message to local state
+    setMessages(prev => [...prev, newMessage]);
+
+    // Update conversation last message
+    setConversations(prev =>
+      prev.map(c =>
+        c.id === selectedConversation.id
+          ? { ...c, lastMessage: content, lastMessageAt: new Date() }
+          : c
+      )
+    );
+
+    // Trigger webhook
+    await triggerWebhook('mensagem_enviada', {
+      conversationId: selectedConversation.id,
+      clientId: selectedConversation.clientId,
+      clientWhatsapp: selectedConversation.clientWhatsapp,
+      message: content,
+      source: 'humano',
+      timestamp: new Date().toISOString(),
+    });
+  };
+
+  const handleEditClient = () => {
+    toast({
+      title: "📝 Editar Cliente",
+      description: "Redirecione para a página de clientes ou abra um modal de edição.",
+    });
+  };
+
   return (
-    <div className="p-8 h-[calc(100vh-2rem)]">
+    <div className="h-[calc(100vh-2rem)] flex flex-col p-4 md:p-6">
       {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="mb-6"
+        className="mb-4"
       >
-        <h1 className="text-3xl font-display font-bold text-foreground flex items-center gap-3">
-          <MessageSquare className="w-8 h-8 text-primary" />
-          Painel de Operação do WhatsApp
+        <h1 className="text-2xl md:text-3xl font-display font-bold text-foreground flex items-center gap-3">
+          <MessageSquare className="w-7 h-7 md:w-8 md:h-8 text-primary" />
+          Central de Atendimento
         </h1>
-        <p className="text-muted-foreground mt-1">
-          Monitoramento em tempo real via API externa • Orquestrador de webhooks
+        <p className="text-muted-foreground text-sm mt-1">
+          Monitoramento em tempo real • Orquestrador de webhooks n8n
         </p>
       </motion.div>
 
-      {/* Important Architecture Notice */}
+      {/* Architecture Notice */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 0.1 }}
-        className="mb-6"
+        className="mb-4"
       >
         <Card className="border-0 shadow-soft bg-primary/5 border-l-4 border-l-primary">
-          <CardContent className="p-4">
-            <div className="flex items-start gap-3">
-              <Activity className="w-5 h-5 text-primary mt-0.5" />
-              <div className="text-sm space-y-1">
-                <p><strong>Arquitetura:</strong> Este painel <strong>NÃO envia mensagens</strong>.</p>
-                <p>• Mensagens recebidas e enviadas vêm da <strong>API externa</strong> (Z-API + n8n)</p>
-                <p>• Botões disparam <strong>webhooks para o n8n</strong> que controla as respostas</p>
-                <p>• IA responde primeiro, humano pode assumir via webhook</p>
-              </div>
+          <CardContent className="p-3">
+            <div className="flex items-start gap-2">
+              <Activity className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
+              <p className="text-xs text-muted-foreground">
+                <strong>Arquitetura:</strong> Mensagens são enviadas via <strong>n8n + Z-API</strong>. 
+                A IA pode consultar estoque (nome, preço, quantidade) mas <strong>não pode alterar</strong>.
+              </p>
             </div>
           </CardContent>
         </Card>
       </motion.div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100%-220px)]">
-        {/* Conversation List */}
+      {/* 3-Column Layout */}
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 min-h-0">
+        {/* Column 1 - Conversation List */}
         <motion.div
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 0.15 }}
+          className="lg:col-span-3 h-full"
         >
           <Card className="border-0 shadow-soft h-full">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base flex items-center gap-2">
-                Conversas Ativas
-                <Badge variant="secondary" className="ml-auto">
-                  {conversations.length}
-                </Badge>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              <ScrollArea className="h-[calc(100%-60px)]">
-                <div className="p-3 space-y-2">
-                  {conversations.map((conv) => {
-                    const status = statusConfig[conv.status];
-                    const isSelected = selectedConversation?.id === conv.id;
-
-                    return (
-                      <button
-                        key={conv.id}
-                        onClick={() => setSelectedConversation(conv)}
-                        className={cn(
-                          "w-full p-3 rounded-xl text-left transition-all",
-                          isSelected
-                            ? "bg-primary text-primary-foreground"
-                            : "hover:bg-muted"
-                        )}
-                      >
-                        <div className="flex items-start gap-3">
-                          <div className="relative">
-                            <div className={cn(
-                              "w-10 h-10 rounded-full flex items-center justify-center font-bold",
-                              isSelected ? "bg-white/20" : "bg-primary/10 text-primary"
-                            )}>
-                              {conv.clientName.charAt(0)}
-                            </div>
-                            {conv.unreadCount > 0 && (
-                              <span className="absolute -top-1 -right-1 w-5 h-5 bg-secondary text-secondary-foreground text-xs font-bold rounded-full flex items-center justify-center">
-                                {conv.unreadCount}
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between">
-                              <p className="font-semibold truncate">{conv.clientName}</p>
-                              <span className={cn(
-                                "text-xs",
-                                isSelected ? "text-white/70" : "text-muted-foreground"
-                              )}>
-                                {formatDistanceToNow(conv.lastMessageAt, { locale: ptBR })}
-                              </span>
-                            </div>
-                            <p className={cn(
-                              "text-sm truncate",
-                              isSelected ? "text-white/80" : "text-muted-foreground"
-                            )}>
-                              {conv.lastMessage}
-                            </p>
-                            <Badge 
-                              variant="outline" 
-                              className={cn(
-                                "mt-1 text-xs border-0",
-                                isSelected ? "bg-white/20 text-white" : status.bgColor + " " + status.color
-                              )}
-                            >
-                              {conv.status === 'ia_ativa' && <Bot className="w-3 h-3 mr-1" />}
-                              {conv.status === 'humano_ativo' && <User className="w-3 h-3 mr-1" />}
-                              {conv.status === 'pausada' && <Pause className="w-3 h-3 mr-1" />}
-                              {status.label}
-                            </Badge>
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </ScrollArea>
-            </CardContent>
+            <ConversationList
+              conversations={conversations}
+              selectedId={selectedConversation?.id || null}
+              onSelect={handleSelectConversation}
+            />
           </Card>
         </motion.div>
 
-        {/* Message Monitor (Read-Only) */}
+        {/* Column 2 - Chat Panel */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="lg:col-span-2"
+          className="lg:col-span-6 h-full min-h-[400px] lg:min-h-0"
         >
-          <Card className="border-0 shadow-soft h-full flex flex-col">
-            {selectedConversation ? (
-              <>
-                {/* Header with Controls */}
-                <CardHeader className="border-b">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center text-primary font-bold">
-                        {selectedConversation.clientName.charAt(0)}
-                      </div>
-                      <div>
-                        <p className="font-semibold">{selectedConversation.clientName}</p>
-                        <p className="text-sm text-muted-foreground flex items-center gap-1">
-                          <Circle className="w-2 h-2 fill-success text-success" />
-                          {selectedConversation.clientWhatsapp}
-                        </p>
-                      </div>
-                      <Badge className={cn("ml-2", statusConfig[selectedConversation.status].bgColor, statusConfig[selectedConversation.status].color)}>
-                        {selectedConversation.status === 'ia_ativa' && <Bot className="w-3 h-3 mr-1" />}
-                        {selectedConversation.status === 'humano_ativo' && <User className="w-3 h-3 mr-1" />}
-                        {selectedConversation.status === 'pausada' && <Pause className="w-3 h-3 mr-1" />}
-                        {statusConfig[selectedConversation.status].label}
-                      </Badge>
-                    </div>
-                    
-                    {/* Webhook Control Buttons */}
-                    <div className="flex items-center gap-2">
-                      {selectedConversation.status === 'ia_ativa' && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={handlePauseAI}
-                        >
-                          <Pause className="w-4 h-4 mr-1" />
-                          Pausar IA
-                        </Button>
-                      )}
-                      
-                      {selectedConversation.status === 'pausada' && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={handleResumeAI}
-                          className="border-success text-success hover:bg-success/10"
-                        >
-                          <Play className="w-4 h-4 mr-1" />
-                          Retomar IA
-                        </Button>
-                      )}
-                      
-                      {selectedConversation.status !== 'humano_ativo' && (
-                        <Button
-                          size="sm"
-                          onClick={handleAssumeConversation}
-                          className="bg-gradient-secondary hover:opacity-90"
-                        >
-                          <UserCheck className="w-4 h-4 mr-1" />
-                          Humano Assumir
-                        </Button>
-                      )}
-                      
-                      {selectedConversation.status === 'humano_ativo' && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={handleResumeAI}
-                          className="border-primary text-primary hover:bg-primary/10"
-                        >
-                          <Bot className="w-4 h-4 mr-1" />
-                          Devolver para IA
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                </CardHeader>
+          <ChatPanel
+            conversation={selectedConversation}
+            messages={conversationMessages}
+            onToggleAI={handleToggleAI}
+            onAssumeConversation={handleAssumeConversation}
+            onResumeAI={handleResumeAI}
+            onPauseAI={handlePauseAI}
+            onSendMessage={handleSendMessage}
+          />
+        </motion.div>
 
-                {/* Messages Display (Read-Only Monitor) */}
-                <CardContent className="flex-1 p-4 overflow-auto">
-                  <div className="space-y-4">
-                    {conversationMessages.map((msg, index) => (
-                      <motion.div
-                        key={msg.id}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: index * 0.05 }}
-                        className={cn(
-                          "flex",
-                          msg.direction === 'outgoing' ? "justify-end" : "justify-start"
-                        )}
-                      >
-                        <div className={cn(
-                          "max-w-[70%] p-3 rounded-2xl",
-                          msg.direction === 'outgoing'
-                            ? "bg-primary text-primary-foreground rounded-br-sm"
-                            : "bg-muted rounded-bl-sm"
-                        )}>
-                          <p className="text-sm">{msg.content}</p>
-                          <div className={cn(
-                            "flex items-center gap-1 mt-1 text-xs",
-                            msg.direction === 'outgoing' ? "text-white/70" : "text-muted-foreground"
-                          )}>
-                            {msg.source === 'ia' ? (
-                              <Bot className="w-3 h-3" />
-                            ) : (
-                              <User className="w-3 h-3" />
-                            )}
-                            <span>{msg.source === 'ia' ? 'IA (n8n)' : 'Humano'}</span>
-                            <span>•</span>
-                            <span>
-                              {new Date(msg.timestamp).toLocaleTimeString('pt-BR', {
-                                hour: '2-digit',
-                                minute: '2-digit'
-                              })}
-                            </span>
-                            <span>•</span>
-                            <ExternalLink className="w-3 h-3" />
-                            <span>via API</span>
-                          </div>
-                        </div>
-                      </motion.div>
-                    ))}
-                  </div>
-                </CardContent>
-
-                {/* Info Footer - No Input! */}
-                <div className="p-4 border-t bg-muted/30">
-                  <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
-                    <ExternalLink className="w-4 h-4" />
-                    <span>Respostas são enviadas exclusivamente via <strong>n8n + Z-API</strong></span>
-                  </div>
-                </div>
-              </>
-            ) : (
-              <div className="flex-1 flex items-center justify-center">
-                <div className="text-center text-muted-foreground">
-                  <MessageSquare className="w-16 h-16 mx-auto mb-4 opacity-30" />
-                  <p>Selecione uma conversa para monitorar</p>
-                </div>
-              </div>
-            )}
+        {/* Column 3 - Context Panel */}
+        <motion.div
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: 0.25 }}
+          className="lg:col-span-3 h-full"
+        >
+          <Card className="border-0 shadow-soft h-full">
+            <ContextPanel
+              conversation={selectedConversation}
+              onEditClient={handleEditClient}
+            />
           </Card>
         </motion.div>
       </div>
