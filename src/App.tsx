@@ -18,6 +18,9 @@ import TabelaValores from "./pages/TabelaValores";
 import ServicosDoDia from "./pages/ServicosDoDia";
 import RotaDoDia from "./pages/RotaDoDia";
 import Faturamento from "./pages/Faturamento";
+import Estoque from "./pages/Estoque";
+import ConfiguracoesFiscais from "./pages/ConfiguracoesFiscais";
+import NotasFiscais from "./pages/NotasFiscais";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -44,6 +47,9 @@ const App = () => (
             <Route path="/servicos-do-dia" element={<ServicosDoDia />} />
             <Route path="/rota-do-dia" element={<RotaDoDia />} />
             <Route path="/faturamento" element={<Faturamento />} />
+            <Route path="/estoque" element={<Estoque />} />
+            <Route path="/config-fiscal" element={<ConfiguracoesFiscais />} />
+            <Route path="/notas-fiscais" element={<NotasFiscais />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </MainLayout>

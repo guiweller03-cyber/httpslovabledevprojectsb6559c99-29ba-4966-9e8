@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useSearchParams } from 'react-router-dom';
-import { DollarSign, Plus, Receipt, CreditCard, Banknote, Smartphone, Check, Gift, Trash2, Hotel, Scissors, Package, AlertCircle, Clock } from 'lucide-react';
+import { DollarSign, Plus, Receipt, CreditCard, Banknote, Smartphone, Check, Gift, Trash2, Hotel, Scissors, Package, AlertCircle, Clock, ShoppingBag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -14,6 +14,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 import { differenceInDays, format } from 'date-fns';
+import { ProductSelector } from '@/components/pos/ProductSelector';
 
 type PaymentMethod = 'dinheiro' | 'pix' | 'credito' | 'debito';
 type PaymentStatus = 'pendente' | 'pago' | 'isento';
@@ -97,7 +98,7 @@ interface ServicePrice {
 // Itens da fatura
 interface InvoiceItem {
   id: string;
-  type: 'banho_tosa' | 'hotel' | 'extra';
+  type: 'banho_tosa' | 'hotel' | 'extra' | 'produto';
   description: string;
   petName?: string;
   unitPrice: number;
@@ -108,6 +109,8 @@ interface InvoiceItem {
   petId?: string;
   serviceStatus?: string;
   paymentStatus?: PaymentStatus;
+  productId?: string;
+  controlStock?: boolean;
 }
 
 interface Sale {
@@ -673,7 +676,33 @@ const FrenteCaixa = () => {
         }
       }
 
-      // 3. Update client last_purchase
+      // 3. Update stock for products sold
+      const productItems = invoiceItems.filter(item => item.type === 'produto' && item.productId && item.controlStock);
+      for (const item of productItems) {
+        // Deduct stock
+        const { data: product } = await (supabase as any).from('products')
+          .select('stock_quantity')
+          .eq('id', item.productId)
+          .single();
+        
+        if (product) {
+          const newStock = Math.max(0, product.stock_quantity - item.quantity);
+          await (supabase as any).from('products')
+            .update({ stock_quantity: newStock, updated_at: new Date().toISOString() })
+            .eq('id', item.productId);
+          
+          // Record movement
+          await (supabase as any).from('stock_movements')
+            .insert({
+              product_id: item.productId,
+              type: 'venda',
+              quantity: item.quantity,
+              reason: `Venda para ${clients.find(c => c.id === selectedClient)?.name}`,
+            });
+        }
+      }
+
+      // 4. Update client last_purchase
       await supabase
         .from('clients')
         .update({ last_purchase: now })
@@ -1053,30 +1082,63 @@ const FrenteCaixa = () => {
 
                 <Separator />
 
-                {/* Extra Items Section */}
-                <div>
-                  <h4 className="font-semibold mb-3 flex items-center gap-2">
-                    <Package className="w-4 h-4" />
-                    Itens Adicionais / Venda Avulsa
+                {/* Products & Extra Items Section */}
+                <div className="space-y-4">
+                  <h4 className="font-semibold flex items-center gap-2">
+                    <ShoppingBag className="w-4 h-4" />
+                    Produtos do Estoque
                   </h4>
-                  <div className="grid grid-cols-3 gap-3">
-                    <Input
-                      placeholder="Descrição (ex: Ração, Coleira)"
-                      value={extraDescription}
-                      onChange={(e) => setExtraDescription(e.target.value)}
-                      className="col-span-2"
-                    />
-                    <div className="flex gap-2">
-                      <Input
-                        placeholder="Valor"
-                        value={extraPrice}
-                        onChange={(e) => setExtraPrice(e.target.value)}
-                        type="text"
-                        className="w-24"
-                      />
-                      <Button onClick={handleAddExtraItem} size="icon">
-                        <Plus className="w-4 h-4" />
+                  <ProductSelector
+                    onSelectProduct={(product, quantity) => {
+                      const newItem: InvoiceItem = {
+                        id: `prod_${product.id}_${Date.now()}`,
+                        type: 'produto',
+                        description: product.name,
+                        unitPrice: product.sale_price,
+                        quantity: quantity,
+                        totalPrice: product.sale_price * quantity,
+                        coveredByPlan: false,
+                        productId: product.id,
+                        controlStock: product.control_stock,
+                      };
+                      setInvoiceItems(prev => [...prev, newItem]);
+                      toast({
+                        title: "Produto adicionado",
+                        description: `${quantity}x ${product.name}`,
+                      });
+                    }}
+                    trigger={
+                      <Button variant="outline" className="w-full gap-2">
+                        <Package className="w-4 h-4" />
+                        Adicionar Produto do Estoque
                       </Button>
+                    }
+                  />
+                  
+                  <div className="pt-2">
+                    <h4 className="font-semibold mb-3 flex items-center gap-2">
+                      <Package className="w-4 h-4" />
+                      Item Avulso (sem estoque)
+                    </h4>
+                    <div className="grid grid-cols-3 gap-3">
+                      <Input
+                        placeholder="Descrição"
+                        value={extraDescription}
+                        onChange={(e) => setExtraDescription(e.target.value)}
+                        className="col-span-2"
+                      />
+                      <div className="flex gap-2">
+                        <Input
+                          placeholder="Valor"
+                          value={extraPrice}
+                          onChange={(e) => setExtraPrice(e.target.value)}
+                          type="text"
+                          className="w-24"
+                        />
+                        <Button onClick={handleAddExtraItem} size="icon">
+                          <Plus className="w-4 h-4" />
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 </div>

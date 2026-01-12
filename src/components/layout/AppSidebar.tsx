@@ -15,7 +15,10 @@ import {
   Settings,
   ClipboardList,
   Car,
-  TrendingUp
+  TrendingUp,
+  Package,
+  FileText,
+  Receipt
 } from 'lucide-react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
@@ -31,10 +34,13 @@ const navItems = [
   { title: 'Rota do Dia', url: '/rota-do-dia', icon: Car },
   { title: 'Planos', url: '/planos', icon: CreditCard },
   { title: 'Clientes & Pets', url: '/clientes', icon: Users },
+  { title: 'Estoque', url: '/estoque', icon: Package },
   { title: 'Lembretes', url: '/lembretes', icon: Bell },
   { title: 'Inativos', url: '/inativos', icon: UserX },
   { title: 'Frente de Caixa', url: '/caixa', icon: DollarSign },
   { title: 'Faturamento', url: '/faturamento', icon: TrendingUp },
+  { title: 'Notas Fiscais', url: '/notas-fiscais', icon: Receipt },
+  { title: 'Config. Fiscal', url: '/config-fiscal', icon: FileText },
   { title: 'WhatsApp', url: '/whatsapp', icon: MessageSquare },
   { title: 'Importar Dados', url: '/importar', icon: Upload },
   { title: 'Tabela de Valores', url: '/tabela-valores', icon: Settings },
