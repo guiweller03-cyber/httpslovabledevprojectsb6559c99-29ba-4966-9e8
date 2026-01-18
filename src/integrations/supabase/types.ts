@@ -911,6 +911,7 @@ export type Database = {
           address: string | null
           age: number | null
           allergies: string | null
+          birth_date: string | null
           breed: string | null
           client_id: string
           coat_type: string | null
@@ -934,6 +935,7 @@ export type Database = {
           address?: string | null
           age?: number | null
           allergies?: string | null
+          birth_date?: string | null
           breed?: string | null
           client_id: string
           coat_type?: string | null
@@ -957,6 +959,7 @@ export type Database = {
           address?: string | null
           age?: number | null
           allergies?: string | null
+          birth_date?: string | null
           breed?: string | null
           client_id?: string
           coat_type?: string | null
