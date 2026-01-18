@@ -9,7 +9,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { Loader2, PawPrint, AlertTriangle, CalendarIcon } from 'lucide-react';
+import { Loader2, PawPrint, AlertTriangle, CalendarIcon, FileText } from 'lucide-react';
 import { getBreedsBySpecies } from '@/data/mockData';
 import { Species, BreedInfo } from '@/types';
 import { format, isAfter, isValid, parseISO } from 'date-fns';
@@ -29,7 +29,7 @@ interface PetFormData {
   species: string;
   breed: string;
   birthDate: Date | undefined;
-  allergies: string;
+  observations: string;
 }
 
 export function PetEditDialog({ petId, petName, isOpen, onClose, onSaved }: PetEditDialogProps) {
@@ -43,7 +43,7 @@ export function PetEditDialog({ petId, petName, isOpen, onClose, onSaved }: PetE
     species: '',
     breed: '',
     birthDate: undefined,
-    allergies: '',
+    observations: '',
   });
   
   const [originalData, setOriginalData] = useState<PetFormData>({
@@ -51,7 +51,7 @@ export function PetEditDialog({ petId, petName, isOpen, onClose, onSaved }: PetE
     species: '',
     breed: '',
     birthDate: undefined,
-    allergies: '',
+    observations: '',
   });
   
   const [errors, setErrors] = useState<Partial<Record<keyof PetFormData, string>>>({});
@@ -112,7 +112,7 @@ export function PetEditDialog({ petId, petName, isOpen, onClose, onSaved }: PetE
           species: petData.species || '',
           breed: petData.breed || '',
           birthDate,
-          allergies: petData.allergies || '',
+          observations: petData.allergies || '',
         };
         
         setFormData(formValues);
@@ -152,9 +152,9 @@ export function PetEditDialog({ petId, petName, isOpen, onClose, onSaved }: PetE
       newErrors.birthDate = 'Data de nascimento não pode ser no futuro';
     }
     
-    // Allergies validation (optional)
-    if (formData.allergies && formData.allergies.length > 500) {
-      newErrors.allergies = 'Informações de alergia muito longas (máx. 500 caracteres)';
+    // Observations validation (optional)
+    if (formData.observations && formData.observations.length > 500) {
+      newErrors.observations = 'Observações muito longas (máx. 500 caracteres)';
     }
     
     setErrors(newErrors);
@@ -171,7 +171,7 @@ export function PetEditDialog({ petId, petName, isOpen, onClose, onSaved }: PetE
         species: formData.species || null,
         breed: formData.breed || null,
         birth_date: formData.birthDate ? format(formData.birthDate, 'yyyy-MM-dd') : null,
-        allergies: formData.allergies.trim() || null,
+        allergies: formData.observations.trim() || null,
       };
       
       const { error } = await supabase
@@ -369,25 +369,24 @@ export function PetEditDialog({ petId, petName, isOpen, onClose, onSaved }: PetE
               )}
             </div>
             
-            {/* Allergies */}
+            {/* Observations */}
             <div className="space-y-2">
-              <Label htmlFor="pet-allergies" className="flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 text-orange-500" />
-                Informações de Alergia
+              <Label htmlFor="pet-observations">
+                Observações
               </Label>
               <Textarea
-                id="pet-allergies"
-                value={formData.allergies}
-                onChange={(e) => handleFieldChange('allergies', e.target.value)}
-                placeholder="Descreva alergias conhecidas, sensibilidades ou restrições..."
+                id="pet-observations"
+                value={formData.observations}
+                onChange={(e) => handleFieldChange('observations', e.target.value)}
+                placeholder="Ex: Alergia"
                 rows={3}
-                className={errors.allergies ? 'border-destructive' : ''}
+                className={errors.observations ? 'border-destructive' : ''}
               />
-              {errors.allergies && (
-                <p className="text-sm text-destructive">{errors.allergies}</p>
+              {errors.observations && (
+                <p className="text-sm text-destructive">{errors.observations}</p>
               )}
               <p className="text-xs text-muted-foreground">
-                Opcional. Inclua alergias a medicamentos, produtos ou alimentos.
+                Opcional. Inclua alergias, sensibilidades ou outras notas importantes.
               </p>
             </div>
             
