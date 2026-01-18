@@ -23,8 +23,12 @@ interface ClientDB {
   name: string;
   whatsapp: string;
   address?: string | null;
+  address_number?: string | null;
+  address_complement?: string | null;
   neighborhood?: string | null;
   city?: string | null;
+  state?: string | null;
+  zip_code?: string | null;
 }
 
 interface AppointmentDB {
@@ -41,8 +45,7 @@ interface AppointmentDB {
 interface RouteItem {
   id: string;
   pet_name: string;
-  address: string | null;
-  neighborhood: string | null;
+  full_address: string;
   time: string | null;
   client_id: string;
   client_name: string;
@@ -86,6 +89,36 @@ const RotaDoDia = () => {
     const pickupList: RouteItem[] = [];
     const deliveryList: RouteItem[] = [];
 
+    // Monta endereço completo
+    const buildFullAddress = (pet: PetDB, client: ClientDB): string => {
+      const parts: string[] = [];
+      
+      // Prioriza endereço do pet, senão usa do cliente
+      const address = pet.address || client.address;
+      const neighborhood = pet.neighborhood || client.neighborhood;
+      const zipCode = pet.zip_code || client.zip_code;
+      const city = client.city;
+      const state = client.state;
+      const number = client.address_number;
+      const complement = client.address_complement;
+      
+      if (address) {
+        let streetLine = address;
+        if (number) streetLine += `, ${number}`;
+        if (complement) streetLine += ` - ${complement}`;
+        parts.push(streetLine);
+      }
+      if (neighborhood) parts.push(neighborhood);
+      if (city && state) {
+        parts.push(`${city} - ${state}`);
+      } else if (city) {
+        parts.push(city);
+      }
+      if (zipCode) parts.push(`CEP: ${zipCode}`);
+      
+      return parts.join(' • ') || 'Endereço não informado';
+    };
+
     // Filtrar por rota_buscar e rota_entregar
     appointments.forEach(apt => {
       const pet = getPet(apt.pet_id);
@@ -96,8 +129,7 @@ const RotaDoDia = () => {
       const baseItem: RouteItem = {
         id: apt.id,
         pet_name: pet.name,
-        address: pet.address || client.address || null,
-        neighborhood: pet.neighborhood || client.neighborhood || null,
+        full_address: buildFullAddress(pet, client),
         time: null,
         client_id: client.id,
         client_name: client.name,
@@ -157,12 +189,10 @@ const RotaDoDia = () => {
         </div>
         
         <div className="mt-3 space-y-2">
-          {item.address && (
-            <div className="flex items-start gap-2 text-sm">
-              <MapPin className="w-4 h-4 text-muted-foreground flex-shrink-0 mt-0.5" />
-              <span>{item.address}{item.neighborhood ? `, ${item.neighborhood}` : ''}</span>
-            </div>
-          )}
+          <div className="flex items-start gap-2 text-sm">
+            <MapPin className="w-4 h-4 text-muted-foreground flex-shrink-0 mt-0.5" />
+            <span className="text-foreground">{item.full_address}</span>
+          </div>
           
           {item.time && (
             <div className="flex items-center gap-1 text-sm">
