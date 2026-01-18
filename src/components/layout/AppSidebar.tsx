@@ -34,7 +34,6 @@ const baseNavItems = [
   { title: 'Rota do Dia', url: '/rota-do-dia', icon: Car },
   { title: 'Planos', url: '/planos', icon: CreditCard },
   { title: 'Clientes & Pets', url: '/clientes', icon: Users },
-  { title: 'Estoque', url: '/estoque', icon: Package },
   { title: 'Lembretes', url: '/lembretes', icon: Bell },
   { title: 'Inativos', url: '/inativos', icon: UserX },
   { title: 'Frente de Caixa', url: '/caixa', icon: DollarSign },
