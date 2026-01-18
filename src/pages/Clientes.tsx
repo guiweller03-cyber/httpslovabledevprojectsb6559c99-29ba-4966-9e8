@@ -1381,23 +1381,10 @@ const Clientes = () => {
                                     e.stopPropagation();
                                     setQuickEditPet({ id: pet.id, name: pet.name });
                                   }}
-                                  title="Editar dados básicos (nome, raça, nascimento, alergias)"
+                                  title="Editar dados do pet"
                                 >
                                   <PawPrint className="w-3 h-3 mr-1" />
-                                  Dados
-                                </Button>
-                                <Button 
-                                  variant="ghost" 
-                                  size="sm" 
-                                  className="h-6 px-2 text-muted-foreground hover:bg-muted"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleEditPet(pet.id);
-                                  }}
-                                  title="Editar cadastro completo"
-                                >
-                                  <Edit className="w-3 h-3 mr-1" />
-                                  Completo
+                                  Editar
                                 </Button>
                               </div>
                             </div>
