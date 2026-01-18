@@ -88,7 +88,7 @@ interface PetDB {
   pickup_time: string | null;
   delivery_time: string | null;
   logistics_type: string | null;
-  age: number | null;
+  birth_date: string | null;
   allergies: string | null;
 }
 
@@ -1339,9 +1339,17 @@ const Clientes = () => {
                               <div className="flex items-center gap-2">
                                 <span>{pet.species === 'cachorro' ? '🐕' : pet.species === 'gato' ? '🐈' : '🐾'}</span>
                                 <span className="text-sm font-medium">{pet.name}</span>
-                                {(pet as any).age && (
-                                  <Badge variant="outline" className="text-xs">
-                                    {(pet as any).age} anos
+                                {pet.birth_date && (
+                                  <Badge variant="outline" className="text-xs" title={format(new Date(pet.birth_date), 'dd/MM/yyyy')}>
+                                    {(() => {
+                                      const birth = new Date(pet.birth_date);
+                                      const today = new Date();
+                                      let years = today.getFullYear() - birth.getFullYear();
+                                      let months = today.getMonth() - birth.getMonth();
+                                      if (months < 0) { years--; months += 12; }
+                                      if (years > 0) return `${years}a`;
+                                      return `${months}m`;
+                                    })()}
                                   </Badge>
                                 )}
                                 <Badge variant="outline" className="text-xs">
@@ -1373,7 +1381,7 @@ const Clientes = () => {
                                     e.stopPropagation();
                                     setQuickEditPet({ id: pet.id, name: pet.name });
                                   }}
-                                  title="Editar dados básicos (nome, raça, idade, alergias)"
+                                  title="Editar dados básicos (nome, raça, nascimento, alergias)"
                                 >
                                   <PawPrint className="w-3 h-3 mr-1" />
                                   Dados

@@ -909,6 +909,8 @@ export type Database = {
       pets: {
         Row: {
           address: string | null
+          age: number | null
+          allergies: string | null
           breed: string | null
           client_id: string
           coat_type: string | null
@@ -930,6 +932,8 @@ export type Database = {
         }
         Insert: {
           address?: string | null
+          age?: number | null
+          allergies?: string | null
           breed?: string | null
           client_id: string
           coat_type?: string | null
@@ -951,6 +955,8 @@ export type Database = {
         }
         Update: {
           address?: string | null
+          age?: number | null
+          allergies?: string | null
           breed?: string | null
           client_id?: string
           coat_type?: string | null
