@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Users, Plus, Search, Phone, Mail, Dog, Cat, Edit, Trash2, Scissors, Droplets, MapPin, Truck, Loader2, TrendingUp } from 'lucide-react';
+import { Users, Plus, Search, Phone, Mail, Dog, Cat, Edit, Trash2, Scissors, Droplets, MapPin, Truck, Loader2, TrendingUp, PawPrint, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -19,6 +19,7 @@ import { VaccineBooklet } from '@/components/pets/VaccineBooklet';
 import { lookupCep, formatCep } from '@/lib/cepLookup';
 import { ClientBillingDialog } from '@/components/clients/ClientBillingDialog';
 import { ClientEditDialog } from '@/components/clients/ClientEditDialog';
+import { PetEditDialog } from '@/components/pets/PetEditDialog';
 
 const furTypeLabels: Record<FurType, string> = {
   curto: 'Pelo curto',
@@ -87,6 +88,8 @@ interface PetDB {
   pickup_time: string | null;
   delivery_time: string | null;
   logistics_type: string | null;
+  age: number | null;
+  allergies: string | null;
 }
 
 // Logistics type options
@@ -107,6 +110,7 @@ const Clientes = () => {
   const [editingPetId, setEditingPetId] = useState<string | null>(null);
   const [billingClient, setBillingClient] = useState<{ id: string; name: string } | null>(null);
   const [editingClient, setEditingClient] = useState<{ id: string; name: string } | null>(null);
+  const [quickEditPet, setQuickEditPet] = useState<{ id: string; name: string } | null>(null);
   // Client form state
   const [clientForm, setClientForm] = useState({
     name: '',
@@ -1330,33 +1334,64 @@ const Clientes = () => {
                           {clientPets.map(pet => (
                             <div
                               key={pet.id}
-                              className="flex items-center gap-2 bg-muted px-3 py-1.5 rounded-full"
+                              className="flex flex-col gap-1 bg-muted px-3 py-2 rounded-lg"
                             >
-                              <span>{pet.species === 'cachorro' ? '🐕' : pet.species === 'gato' ? '🐈' : '🐾'}</span>
-                              <span className="text-sm font-medium">{pet.name}</span>
-                              <Badge variant="outline" className="text-xs">
-                                {pet.size ? sizeLabels[pet.size as PetSize] : 'N/A'}
-                              </Badge>
-                              <Badge variant="secondary" className="text-xs">
-                                {pet.coat_type ? furTypeLabels[pet.coat_type as FurType] : 'N/A'}
-                              </Badge>
-                              {pet.preferred_service && (
-                                <Badge className="text-xs bg-primary/20 text-primary">
-                                  {pet.preferred_service === 'banho_tosa' ? 'B+T' : 'Banho'}
+                              <div className="flex items-center gap-2">
+                                <span>{pet.species === 'cachorro' ? '🐕' : pet.species === 'gato' ? '🐈' : '🐾'}</span>
+                                <span className="text-sm font-medium">{pet.name}</span>
+                                {(pet as any).age && (
+                                  <Badge variant="outline" className="text-xs">
+                                    {(pet as any).age} anos
+                                  </Badge>
+                                )}
+                                <Badge variant="outline" className="text-xs">
+                                  {pet.size ? sizeLabels[pet.size as PetSize] : 'N/A'}
                                 </Badge>
+                                <Badge variant="secondary" className="text-xs">
+                                  {pet.coat_type ? furTypeLabels[pet.coat_type as FurType] : 'N/A'}
+                                </Badge>
+                                {pet.preferred_service && (
+                                  <Badge className="text-xs bg-primary/20 text-primary">
+                                    {pet.preferred_service === 'banho_tosa' ? 'B+T' : 'Banho'}
+                                  </Badge>
+                                )}
+                              </div>
+                              {(pet as any).allergies && (
+                                <div className="flex items-center gap-1 text-xs text-orange-600 bg-orange-50 dark:bg-orange-950/30 px-2 py-1 rounded">
+                                  <AlertTriangle className="w-3 h-3" />
+                                  <span className="truncate max-w-[200px]" title={(pet as any).allergies}>
+                                    {(pet as any).allergies}
+                                  </span>
+                                </div>
                               )}
-                              <Button 
-                                variant="ghost" 
-                                size="sm" 
-                                className="h-6 px-2 text-primary hover:bg-primary/10"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleEditPet(pet.id);
-                                }}
-                              >
-                                <Edit className="w-3 h-3 mr-1" />
-                                Editar
-                              </Button>
+                              <div className="flex items-center gap-1 mt-1">
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm" 
+                                  className="h-6 px-2 text-primary hover:bg-primary/10"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setQuickEditPet({ id: pet.id, name: pet.name });
+                                  }}
+                                  title="Editar dados básicos (nome, raça, idade, alergias)"
+                                >
+                                  <PawPrint className="w-3 h-3 mr-1" />
+                                  Dados
+                                </Button>
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm" 
+                                  className="h-6 px-2 text-muted-foreground hover:bg-muted"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleEditPet(pet.id);
+                                  }}
+                                  title="Editar cadastro completo"
+                                >
+                                  <Edit className="w-3 h-3 mr-1" />
+                                  Completo
+                                </Button>
+                              </div>
                             </div>
                           ))}
                         </div>
@@ -1403,6 +1438,17 @@ const Clientes = () => {
         onSuccess={() => {
           fetchClients();
           setEditingClient(null);
+        }}
+      />
+
+      {/* Pet Quick Edit Dialog (Nome, Raça, Idade, Alergias) */}
+      <PetEditDialog
+        petId={quickEditPet?.id || null}
+        petName={quickEditPet?.name || ''}
+        isOpen={!!quickEditPet}
+        onClose={() => setQuickEditPet(null)}
+        onSaved={() => {
+          fetchPets();
         }}
       />
     </div>
