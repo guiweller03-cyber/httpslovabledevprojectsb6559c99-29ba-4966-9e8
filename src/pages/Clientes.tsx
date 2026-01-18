@@ -18,6 +18,7 @@ import { addMonths, addDays, format } from 'date-fns';
 import { VaccineBooklet } from '@/components/pets/VaccineBooklet';
 import { lookupCep, formatCep } from '@/lib/cepLookup';
 import { ClientBillingDialog } from '@/components/clients/ClientBillingDialog';
+import { ClientEditDialog } from '@/components/clients/ClientEditDialog';
 
 const furTypeLabels: Record<FurType, string> = {
   curto: 'Pelo curto',
@@ -105,7 +106,7 @@ const Clientes = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [editingPetId, setEditingPetId] = useState<string | null>(null);
   const [billingClient, setBillingClient] = useState<{ id: string; name: string } | null>(null);
-  
+  const [editingClient, setEditingClient] = useState<{ id: string; name: string } | null>(null);
   // Client form state
   const [clientForm, setClientForm] = useState({
     name: '',
@@ -1287,7 +1288,21 @@ const Clientes = () => {
                           {client.name.charAt(0)}
                         </div>
                         <div>
-                          <h4 className="font-semibold text-foreground">{client.name}</h4>
+                          <div className="flex items-center gap-2">
+                            <h4 className="font-semibold text-foreground">{client.name}</h4>
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              className="h-6 px-2 text-primary hover:bg-primary/10"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingClient({ id: client.id, name: client.name });
+                              }}
+                            >
+                              <Edit className="w-3 h-3 mr-1" />
+                              Editar
+                            </Button>
+                          </div>
                           <div className="flex items-center gap-3 text-sm text-muted-foreground">
                             <span className="flex items-center gap-1">
                               <Phone className="w-3 h-3" />
@@ -1297,6 +1312,12 @@ const Clientes = () => {
                               <span className="flex items-center gap-1">
                                 <Mail className="w-3 h-3" />
                                 {client.email}
+                              </span>
+                            )}
+                            {client.address && (
+                              <span className="flex items-center gap-1">
+                                <MapPin className="w-3 h-3" />
+                                {client.address}{client.address_number ? `, ${client.address_number}` : ''} - {client.neighborhood || client.city}
                               </span>
                             )}
                           </div>
@@ -1372,6 +1393,17 @@ const Clientes = () => {
         onOpenChange={(open) => !open && setBillingClient(null)}
         clientId={billingClient?.id || ''}
         clientName={billingClient?.name || ''}
+      />
+
+      {/* Client Edit Dialog */}
+      <ClientEditDialog
+        open={!!editingClient}
+        onOpenChange={(open) => !open && setEditingClient(null)}
+        clientId={editingClient?.id || ''}
+        onSuccess={() => {
+          fetchClients();
+          setEditingClient(null);
+        }}
       />
     </div>
   );
