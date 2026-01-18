@@ -5,11 +5,16 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
 import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { Loader2, PawPrint, AlertTriangle } from 'lucide-react';
+import { Loader2, PawPrint, AlertTriangle, CalendarIcon } from 'lucide-react';
 import { getBreedsBySpecies } from '@/data/mockData';
 import { Species, BreedInfo } from '@/types';
+import { format, isAfter, isValid, parseISO } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
+import { cn } from '@/lib/utils';
 
 interface PetEditDialogProps {
   petId: string | null;
@@ -23,7 +28,7 @@ interface PetFormData {
   name: string;
   species: string;
   breed: string;
-  age: string;
+  birthDate: Date | undefined;
   allergies: string;
 }
 
@@ -37,7 +42,7 @@ export function PetEditDialog({ petId, petName, isOpen, onClose, onSaved }: PetE
     name: '',
     species: '',
     breed: '',
-    age: '',
+    birthDate: undefined,
     allergies: '',
   });
   
@@ -45,7 +50,7 @@ export function PetEditDialog({ petId, petName, isOpen, onClose, onSaved }: PetE
     name: '',
     species: '',
     breed: '',
-    age: '',
+    birthDate: undefined,
     allergies: '',
   });
   
@@ -67,8 +72,15 @@ export function PetEditDialog({ petId, petName, isOpen, onClose, onSaved }: PetE
 
   // Track changes
   useEffect(() => {
-    const changed = JSON.stringify(formData) !== JSON.stringify(originalData);
-    setHasChanges(changed);
+    const formStr = JSON.stringify({
+      ...formData,
+      birthDate: formData.birthDate?.toISOString() || null
+    });
+    const origStr = JSON.stringify({
+      ...originalData,
+      birthDate: originalData.birthDate?.toISOString() || null
+    });
+    setHasChanges(formStr !== origStr);
   }, [formData, originalData]);
 
   const fetchPetData = async () => {
@@ -78,7 +90,7 @@ export function PetEditDialog({ petId, petName, isOpen, onClose, onSaved }: PetE
     try {
       const { data, error } = await supabase
         .from('pets')
-        .select('name, species, breed, age, allergies')
+        .select('name, species, breed, birth_date, allergies')
         .eq('id', petId)
         .maybeSingle();
       
@@ -86,11 +98,20 @@ export function PetEditDialog({ petId, petName, isOpen, onClose, onSaved }: PetE
       
       if (data) {
         const petData = data as any;
+        let birthDate: Date | undefined;
+        
+        if (petData.birth_date) {
+          const parsed = parseISO(petData.birth_date);
+          if (isValid(parsed)) {
+            birthDate = parsed;
+          }
+        }
+        
         const formValues: PetFormData = {
           name: petData.name || '',
           species: petData.species || '',
           breed: petData.breed || '',
-          age: petData.age?.toString() || '',
+          birthDate,
           allergies: petData.allergies || '',
         };
         
@@ -126,14 +147,9 @@ export function PetEditDialog({ petId, petName, isOpen, onClose, onSaved }: PetE
       newErrors.name = 'Nome muito longo (máx. 50 caracteres)';
     }
     
-    // Age validation (optional but must be valid if provided)
-    if (formData.age) {
-      const ageNum = parseInt(formData.age);
-      if (isNaN(ageNum) || ageNum < 0) {
-        newErrors.age = 'Idade deve ser um número válido';
-      } else if (ageNum > 30) {
-        newErrors.age = 'Idade parece incorreta (máx. 30 anos)';
-      }
+    // Birth date validation (not in the future)
+    if (formData.birthDate && isAfter(formData.birthDate, new Date())) {
+      newErrors.birthDate = 'Data de nascimento não pode ser no futuro';
     }
     
     // Allergies validation (optional)
@@ -154,7 +170,7 @@ export function PetEditDialog({ petId, petName, isOpen, onClose, onSaved }: PetE
         name: formData.name.trim(),
         species: formData.species || null,
         breed: formData.breed || null,
-        age: formData.age ? parseInt(formData.age) : null,
+        birth_date: formData.birthDate ? format(formData.birthDate, 'yyyy-MM-dd') : null,
         allergies: formData.allergies.trim() || null,
       };
       
@@ -196,11 +212,35 @@ export function PetEditDialog({ petId, petName, isOpen, onClose, onSaved }: PetE
     onClose();
   };
 
-  const handleFieldChange = (field: keyof PetFormData, value: string) => {
+  const handleFieldChange = (field: keyof PetFormData, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
     // Clear error when user starts typing
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: undefined }));
+    }
+  };
+
+  // Calculate age from birth date for display
+  const getAgeDisplay = () => {
+    if (!formData.birthDate) return null;
+    
+    const today = new Date();
+    const birth = formData.birthDate;
+    let years = today.getFullYear() - birth.getFullYear();
+    let months = today.getMonth() - birth.getMonth();
+    
+    if (months < 0) {
+      years--;
+      months += 12;
+    }
+    
+    if (years > 0) {
+      return `${years} ano${years > 1 ? 's' : ''}${months > 0 ? ` e ${months} mês${months > 1 ? 'es' : ''}` : ''}`;
+    } else if (months > 0) {
+      return `${months} mês${months > 1 ? 'es' : ''}`;
+    } else {
+      const days = Math.floor((today.getTime() - birth.getTime()) / (1000 * 60 * 60 * 24));
+      return `${days} dia${days !== 1 ? 's' : ''}`;
     }
   };
 
@@ -210,7 +250,7 @@ export function PetEditDialog({ petId, petName, isOpen, onClose, onSaved }: PetE
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <PawPrint className="w-5 h-5 text-primary" />
-            Editar Pet
+            Editar Pet - Cadastro Completo
           </DialogTitle>
         </DialogHeader>
         
@@ -281,21 +321,51 @@ export function PetEditDialog({ petId, petName, isOpen, onClose, onSaved }: PetE
               </div>
             </div>
             
-            {/* Age */}
+            {/* Birth Date with Calendar Picker */}
             <div className="space-y-2">
-              <Label htmlFor="pet-age">Idade (anos)</Label>
-              <Input
-                id="pet-age"
-                type="number"
-                min="0"
-                max="30"
-                value={formData.age}
-                onChange={(e) => handleFieldChange('age', e.target.value)}
-                placeholder="Ex: 3"
-                className={errors.age ? 'border-destructive' : ''}
-              />
-              {errors.age && (
-                <p className="text-sm text-destructive">{errors.age}</p>
+              <Label className="flex items-center gap-1">
+                Data de Nascimento
+              </Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left font-normal",
+                      !formData.birthDate && "text-muted-foreground",
+                      errors.birthDate && "border-destructive"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {formData.birthDate ? (
+                      format(formData.birthDate, "dd 'de' MMMM 'de' yyyy", { locale: ptBR })
+                    ) : (
+                      <span>Selecione a data de nascimento</span>
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={formData.birthDate}
+                    onSelect={(date) => handleFieldChange('birthDate', date)}
+                    disabled={(date) => isAfter(date, new Date())}
+                    initialFocus
+                    className={cn("p-3 pointer-events-auto")}
+                    locale={ptBR}
+                    captionLayout="dropdown-buttons"
+                    fromYear={2000}
+                    toYear={new Date().getFullYear()}
+                  />
+                </PopoverContent>
+              </Popover>
+              {errors.birthDate && (
+                <p className="text-sm text-destructive">{errors.birthDate}</p>
+              )}
+              {formData.birthDate && (
+                <p className="text-xs text-muted-foreground">
+                  Idade calculada: {getAgeDisplay()}
+                </p>
               )}
             </div>
             
