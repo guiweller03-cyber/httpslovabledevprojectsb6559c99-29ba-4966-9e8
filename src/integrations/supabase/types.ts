@@ -22,6 +22,7 @@ export type Database = {
           client_plan_id: string | null
           completed_time: string | null
           created_at: string | null
+          data_cobranca: string | null
           end_datetime: string
           google_event_id: string | null
           grooming_type: string | null
@@ -49,6 +50,7 @@ export type Database = {
           client_plan_id?: string | null
           completed_time?: string | null
           created_at?: string | null
+          data_cobranca?: string | null
           end_datetime: string
           google_event_id?: string | null
           grooming_type?: string | null
@@ -76,6 +78,7 @@ export type Database = {
           client_plan_id?: string | null
           completed_time?: string | null
           created_at?: string | null
+          data_cobranca?: string | null
           end_datetime?: string
           google_event_id?: string | null
           grooming_type?: string | null
@@ -336,6 +339,7 @@ export type Database = {
           name: string
           neighborhood: string | null
           state: string | null
+          tipo_campanha: string | null
           whatsapp: string
           zip_code: string | null
         }
@@ -352,6 +356,7 @@ export type Database = {
           name: string
           neighborhood?: string | null
           state?: string | null
+          tipo_campanha?: string | null
           whatsapp: string
           zip_code?: string | null
         }
@@ -368,6 +373,7 @@ export type Database = {
           name?: string
           neighborhood?: string | null
           state?: string | null
+          tipo_campanha?: string | null
           whatsapp?: string
           zip_code?: string | null
         }
@@ -673,6 +679,7 @@ export type Database = {
           client_plan_id: string | null
           created_at: string | null
           daily_rate: number
+          data_cobranca: string | null
           google_event_id: string | null
           id: string
           is_creche: boolean | null
@@ -694,6 +701,7 @@ export type Database = {
           client_plan_id?: string | null
           created_at?: string | null
           daily_rate: number
+          data_cobranca?: string | null
           google_event_id?: string | null
           id?: string
           is_creche?: boolean | null
@@ -715,6 +723,7 @@ export type Database = {
           client_plan_id?: string | null
           created_at?: string | null
           daily_rate?: number
+          data_cobranca?: string | null
           google_event_id?: string | null
           id?: string
           is_creche?: boolean | null
@@ -1296,6 +1305,7 @@ export type Database = {
         Row: {
           business_name: string | null
           created_at: string | null
+          dias_inatividade: number | null
           id: string
           mod_caixa: boolean | null
           mod_clinica: boolean | null
@@ -1314,6 +1324,7 @@ export type Database = {
         Insert: {
           business_name?: string | null
           created_at?: string | null
+          dias_inatividade?: number | null
           id?: string
           mod_caixa?: boolean | null
           mod_clinica?: boolean | null
@@ -1332,6 +1343,7 @@ export type Database = {
         Update: {
           business_name?: string | null
           created_at?: string | null
+          dias_inatividade?: number | null
           id?: string
           mod_caixa?: boolean | null
           mod_clinica?: boolean | null
@@ -1379,6 +1391,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      recalculate_all_client_campaigns: { Args: never; Returns: undefined }
     }
     Enums: {
       app_role: "admin" | "manager" | "employee"
