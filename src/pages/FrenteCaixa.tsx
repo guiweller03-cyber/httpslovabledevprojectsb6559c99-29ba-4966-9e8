@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { useSearchParams } from 'react-router-dom';
-import { DollarSign, Plus, CreditCard, Banknote, Smartphone, Check, Gift, Trash2, Hotel, Scissors, Package, AlertCircle, Clock, ShoppingBag, CheckCircle2 } from 'lucide-react';
+import { DollarSign, Plus, CreditCard, Banknote, Smartphone, Check, Gift, Trash2, Hotel, Scissors, Package, AlertCircle, Clock, ShoppingBag, CheckCircle2, Calendar } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -13,9 +13,11 @@ import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
-import { differenceInDays, format } from 'date-fns';
+import { differenceInDays, format, isToday, isTomorrow, isYesterday, startOfDay, addDays, subDays } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 import { ProductSelector } from '@/components/pos/ProductSelector';
 import { PaymentConfirmationDialog, PaymentStatusBadge } from '@/components/pos/PaymentConfirmationDialog';
+import { DateSelector } from '@/components/pos/DateSelector';
 
 type PaymentMethod = 'dinheiro' | 'pix' | 'credito' | 'debito';
 type PaymentStatus = 'pendente' | 'confirmado' | 'pago' | 'isento';
@@ -49,6 +51,7 @@ interface AppointmentDB {
   payment_method?: string | null;
   paid_at?: string | null;
   start_datetime: string;
+  data_cobranca?: string | null;
   optional_services?: string[] | null;
   is_plan_usage?: boolean | null;
   client_plan_id?: string | null;
@@ -74,6 +77,7 @@ interface HotelStayDB {
   payment_method?: string | null;
   paid_at?: string | null;
   is_creche: boolean | null;
+  data_cobranca?: string | null;
 }
 
 interface ClientPlan {
@@ -211,6 +215,9 @@ const FrenteCaixa = () => {
   // Extra item form
   const [extraDescription, setExtraDescription] = useState('');
   const [extraPrice, setExtraPrice] = useState('');
+  
+  // Date filter for cash register
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
 
   // Fetch data from Supabase
   const fetchClients = async () => {
@@ -278,19 +285,21 @@ const FrenteCaixa = () => {
     if (!error) setServiceAddons(data || []);
   };
 
-  // Build pending payments list - services FINALIZED but NOT PAID
-  // This is the key fix: finalized services with pending payment must appear here
+  // Build pending payments list filtered by data_cobranca
   const buildPendingPayments = () => {
     const pending: PendingPaymentItem[] = [];
+    const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
 
-    // Add appointments that are FINALIZED but NOT PAID (payment_status != 'pago')
-    // OR services that are still in progress (not finalized, not cancelled)
+    // Add appointments filtered by data_cobranca (or start_datetime if no data_cobranca)
     for (const apt of appointments) {
-      // Skip cancelled
       if (apt.status === 'cancelado') continue;
+      if (apt.payment_status === 'pago' || apt.payment_status === 'pago_antecipado' || apt.payment_status === 'isento') continue;
       
-      // Skip already paid
-      if (apt.payment_status === 'pago' || apt.payment_status === 'isento') continue;
+      // Use data_cobranca if available, otherwise fall back to start_datetime
+      const aptCobrancaDate = apt.data_cobranca || format(new Date(apt.start_datetime), 'yyyy-MM-dd');
+      
+      // Filter by selected date (or show all if looking at future dates for early payment)
+      if (aptCobrancaDate !== selectedDateStr) continue;
       
       const client = clients.find(c => c.id === apt.client_id);
       const pet = pets.find(p => p.id === apt.pet_id);
@@ -315,13 +324,16 @@ const FrenteCaixa = () => {
       });
     }
 
-    // Add hotel stays that are NOT PAID (not check_out with payment, not cancelled)
+    // Add hotel stays filtered by data_cobranca (or check_out if no data_cobranca)
     for (const stay of hotelStays) {
-      // Skip cancelled
       if (stay.status === 'cancelado') continue;
+      if (stay.payment_status === 'pago' || stay.payment_status === 'pago_antecipado' || stay.payment_status === 'isento') continue;
       
-      // Skip already paid
-      if (stay.payment_status === 'pago' || stay.payment_status === 'isento') continue;
+      // Use data_cobranca if available, otherwise fall back to check_out
+      const stayCobrancaDate = stay.data_cobranca || format(new Date(stay.check_out), 'yyyy-MM-dd');
+      const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
+      
+      if (stayCobrancaDate !== selectedDateStr) continue;
       
       const client = clients.find(c => c.id === stay.client_id);
       const pet = pets.find(p => p.id === stay.pet_id);
@@ -402,12 +414,12 @@ const FrenteCaixa = () => {
     }
   }, [searchParams, clients, pets, appointments, selectedClient]);
 
-  // Build pending payments when data changes
+  // Build pending payments when data or date changes
   useEffect(() => {
     if (clients.length > 0 && pets.length > 0) {
       buildPendingPayments();
     }
-  }, [clients, pets, appointments, hotelStays]);
+  }, [clients, pets, appointments, hotelStays, selectedDate]);
 
   // Filter pets when client changes
   useEffect(() => {
@@ -988,6 +1000,9 @@ const FrenteCaixa = () => {
               Cobrança unificada - Serviços + Hotel + Itens Extras
             </p>
           </div>
+          
+          {/* Date Selector */}
+          <DateSelector selectedDate={selectedDate} onDateChange={setSelectedDate} />
           
           {/* Pending Alert */}
           {finishedPendingPayments.length > 0 && (
