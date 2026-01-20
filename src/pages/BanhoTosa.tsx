@@ -714,25 +714,14 @@ const BanhoTosa = () => {
                   </div>
                 )}
 
-                {/* Porte e Tipo de Pelo */}
+                {/* Porte e Tipo de Pelo - somente exibição informativa */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label>Porte *</Label>
-                    <Select 
-                      value={formData.size}
-                      onValueChange={(value) => setFormData(prev => ({ ...prev, size: value }))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Porte do pet" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {SIZE_CATEGORIES.map(size => (
-                          <SelectItem key={size.value} value={size.value}>
-                            {size.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <Label>Porte</Label>
+                    <div className="mt-1 p-2 bg-muted/50 rounded-md text-sm font-medium">
+                      {formData.size ? (SIZE_CATEGORIES.find(s => s.value === formData.size)?.label || formData.size) : 'Selecione um pet'}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">Definido no cadastro do pet</p>
                   </div>
                   <div>
                     <Label>Tipo de Pelo *</Label>

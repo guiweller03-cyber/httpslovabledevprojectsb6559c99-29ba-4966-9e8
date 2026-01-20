@@ -207,19 +207,28 @@ const HotelCreche = () => {
       const diffTime = checkOutDate.getTime() - checkInDate.getTime();
       const days = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
       
-      if (days > 0) {
-        setTotalDays(days);
-        // Se usar plano, valor é zero
-        setTotalPrice(isPlanUsage ? 0 : days * dailyRate);
+      // Creche: permite mesmo dia (conta como 1 diária)
+      // Hotel: exige pelo menos 1 noite (dias > 0)
+      if (formData.serviceType === 'creche') {
+        // Creche permite entrada e saída no mesmo dia
+        const effectiveDays = days <= 0 ? 1 : days;
+        setTotalDays(effectiveDays);
+        setTotalPrice(isPlanUsage ? 0 : effectiveDays * dailyRate);
       } else {
-        setTotalDays(0);
-        setTotalPrice(0);
+        // Hotel exige pelo menos 1 pernoite
+        if (days > 0) {
+          setTotalDays(days);
+          setTotalPrice(isPlanUsage ? 0 : days * dailyRate);
+        } else {
+          setTotalDays(0);
+          setTotalPrice(0);
+        }
       }
     } else {
       setTotalDays(0);
       setTotalPrice(0);
     }
-  }, [formData.checkIn, formData.checkOut, dailyRate, isPlanUsage]);
+  }, [formData.checkIn, formData.checkOut, formData.serviceType, dailyRate, isPlanUsage]);
 
   // Filter out cancelled bookings from calendar
   const events = bookings
@@ -344,10 +353,21 @@ const HotelCreche = () => {
       return;
     }
 
-    if (totalDays <= 0) {
+    // Validação específica para Hotel vs Creche
+    if (formData.serviceType === 'hotel' && totalDays <= 0) {
       toast({
         title: "Datas inválidas",
-        description: "A data de check-out deve ser posterior ao check-in.",
+        description: "Hotel exige permanência mínima de 1 noite. A data de check-out deve ser posterior ao check-in.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Creche permite mesmo dia, mas precisa ter datas válidas
+    if (formData.serviceType === 'creche' && (!formData.checkIn || !formData.checkOut)) {
+      toast({
+        title: "Datas obrigatórias",
+        description: "Preencha as datas de entrada e saída.",
         variant: "destructive",
       });
       return;

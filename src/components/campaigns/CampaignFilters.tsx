@@ -37,9 +37,9 @@ interface CampaignFiltersProps {
 
 const campaignLabels: Record<CampaignType, { label: string; color: string; description: string }> = {
   primeira_compra: {
-    label: 'Primeira Compra',
-    color: 'bg-blue-100 text-blue-800 border-blue-200',
-    description: 'Clientes sem compras registradas',
+    label: 'Sem Compra',
+    color: 'bg-gray-100 text-gray-800 border-gray-200',
+    description: 'Clientes que nunca realizaram compra',
   },
   ativo: {
     label: 'Ativos',

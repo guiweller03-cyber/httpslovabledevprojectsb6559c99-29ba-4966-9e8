@@ -500,17 +500,15 @@ const Clientes = () => {
                       <div className="flex-1">
                         <div className="flex items-center gap-3 mb-2">
                           <h3 className="font-semibold text-foreground">{client.name}</h3>
-                          {client.tipo_campanha && (
+                          {client.tipo_campanha && client.tipo_campanha !== 'primeira_compra' && (
                             <Badge 
                               variant="outline" 
                               className={
                                 client.tipo_campanha === 'ativo' ? 'bg-green-100 text-green-700 border-green-200' :
-                                client.tipo_campanha === 'inativo' ? 'bg-orange-100 text-orange-700 border-orange-200' :
-                                'bg-blue-100 text-blue-700 border-blue-200'
+                                'bg-orange-100 text-orange-700 border-orange-200'
                               }
                             >
-                              {client.tipo_campanha === 'primeira_compra' ? 'Primeira Compra' :
-                               client.tipo_campanha === 'ativo' ? 'Ativo' : 'Inativo'}
+                              {client.tipo_campanha === 'ativo' ? 'Ativo' : 'Inativo'}
                             </Badge>
                           )}
                         </div>
