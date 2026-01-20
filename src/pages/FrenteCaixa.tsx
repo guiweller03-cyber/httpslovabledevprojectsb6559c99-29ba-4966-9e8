@@ -1,32 +1,26 @@
 import { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { useSearchParams } from 'react-router-dom';
-import { DollarSign, Plus, CreditCard, Banknote, Smartphone, Check, Gift, Trash2, Hotel, Scissors, Package, AlertCircle, Clock, ShoppingBag, CheckCircle2, Calendar } from 'lucide-react';
+import { DollarSign, CreditCard, Banknote, Smartphone, Check, Trash2, Hotel, Scissors, Package, AlertCircle, Clock, CheckCircle2, Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-// Switch removed - fiscal module disabled
 import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
-import { differenceInDays, format, isToday, isTomorrow, isYesterday, startOfDay, addDays, subDays } from 'date-fns';
+import { differenceInDays, format, addDays, startOfDay, isToday, isTomorrow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { ProductSelector } from '@/components/pos/ProductSelector';
-import { PaymentConfirmationDialog, PaymentStatusBadge } from '@/components/pos/PaymentConfirmationDialog';
-import { DateSelector } from '@/components/pos/DateSelector';
+import { PaymentConfirmationDialog } from '@/components/pos/PaymentConfirmationDialog';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 
 type PaymentMethod = 'dinheiro' | 'pix' | 'credito' | 'debito';
-type PaymentStatus = 'pendente' | 'confirmado' | 'pago' | 'isento';
+type PaymentStatus = 'pendente' | 'confirmado' | 'pago' | 'pago_antecipado' | 'isento';
 
 interface ClientDB {
   id: string;
   name: string;
   whatsapp: string;
-  email: string | null;
 }
 
 interface PetDB {
@@ -35,8 +29,6 @@ interface PetDB {
   name: string;
   species: string;
   breed: string | null;
-  size: string | null;
-  coat_type: string | null;
 }
 
 interface AppointmentDB {
@@ -54,14 +46,6 @@ interface AppointmentDB {
   data_cobranca?: string | null;
   optional_services?: string[] | null;
   is_plan_usage?: boolean | null;
-  client_plan_id?: string | null;
-}
-
-interface ServiceAddon {
-  id: string;
-  name: string;
-  price: number;
-  active: boolean | null;
 }
 
 interface HotelStayDB {
@@ -80,54 +64,6 @@ interface HotelStayDB {
   data_cobranca?: string | null;
 }
 
-interface ClientPlan {
-  id: string;
-  client_id: string;
-  pet_id: string;
-  plan_id: string;
-  total_baths: number;
-  used_baths: number;
-  expires_at: string;
-  active: boolean | null;
-}
-
-interface ServicePrice {
-  id: string;
-  breed: string;
-  size_category: string;
-  coat_type: string;
-  service_type: string;
-  price: number;
-}
-
-// Itens da fatura
-interface InvoiceItem {
-  id: string;
-  type: 'banho_tosa' | 'hotel' | 'extra' | 'produto';
-  description: string;
-  petName?: string;
-  unitPrice: number;
-  quantity: number;
-  totalPrice: number;
-  coveredByPlan: boolean;
-  sourceId?: string; // appointment_id ou hotel_stay_id
-  petId?: string;
-  serviceStatus?: string;
-  paymentStatus?: PaymentStatus;
-  productId?: string;
-  controlStock?: boolean;
-}
-
-interface Sale {
-  id: string;
-  clientId: string;
-  description: string;
-  amount: number;
-  paymentMethod: PaymentMethod;
-  createdAt: string;
-}
-
-// Pending payment item for display
 interface PendingPaymentItem {
   id: string;
   type: 'banho_tosa' | 'hotel';
@@ -139,8 +75,9 @@ interface PendingPaymentItem {
   price: number;
   serviceStatus: string;
   paymentStatus: PaymentStatus;
-  date: string;
+  time: string;
   sourceId: string;
+  isPaid: boolean;
 }
 
 const paymentMethods: { value: PaymentMethod; label: string; icon: typeof DollarSign }[] = [
@@ -169,146 +106,75 @@ const statusLabels: Record<string, string> = {
 
 const FrenteCaixa = () => {
   const { toast } = useToast();
-  const [searchParams] = useSearchParams();
   
   // State from database
   const [clients, setClients] = useState<ClientDB[]>([]);
   const [pets, setPets] = useState<PetDB[]>([]);
-  const [filteredPets, setFilteredPets] = useState<PetDB[]>([]);
   const [appointments, setAppointments] = useState<AppointmentDB[]>([]);
   const [hotelStays, setHotelStays] = useState<HotelStayDB[]>([]);
-  const [clientPlans, setClientPlans] = useState<ClientPlan[]>([]);
-  const [servicePrices, setServicePrices] = useState<ServicePrice[]>([]);
-  const [serviceAddons, setServiceAddons] = useState<ServiceAddon[]>([]);
-  const [sales, setSales] = useState<Sale[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   
-  // Pending payments list
-  const [pendingPayments, setPendingPayments] = useState<PendingPaymentItem[]>([]);
+  // Active tab
+  const [activeTab, setActiveTab] = useState<'hoje' | 'amanha' | 'outra'>('hoje');
+  const [customDate, setCustomDate] = useState<Date | undefined>(undefined);
   
   // Payment confirmation dialog state
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
-  const [pendingConfirmation, setPendingConfirmation] = useState<{
-    type: 'invoice' | 'quickPay';
-    item?: PendingPaymentItem;
-    amount: number;
-    clientName: string;
-    description: string;
-  } | null>(null);
-  const [confirmedPayments, setConfirmedPayments] = useState<Map<string, {
-    confirmedAmount: number;
-    paymentMethod: PaymentMethod;
-    confirmedAt: string;
-    notes?: string;
-  }>>(new Map());
-  
-  // Form state
-  const [selectedClient, setSelectedClient] = useState('');
-  const [selectedPetId, setSelectedPetId] = useState('');
   const [selectedPayment, setSelectedPayment] = useState<PaymentMethod>('pix');
-  // Fiscal module DISABLED - issueNF always false
-  const issueNF = false; // Feature flag: FISCAL_MODULE_ENABLED = false
-  
-  // Invoice items
-  const [invoiceItems, setInvoiceItems] = useState<InvoiceItem[]>([]);
-  
-  // Extra item form
-  const [extraDescription, setExtraDescription] = useState('');
-  const [extraPrice, setExtraPrice] = useState('');
-  
-  // Date filter for cash register
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [pendingConfirmation, setPendingConfirmation] = useState<{
+    item: PendingPaymentItem;
+    isEarlyPayment: boolean;
+  } | null>(null);
+
+  // Today's sales for summary
+  const [todaySales, setTodaySales] = useState<{ amount: number; method: string }[]>([]);
 
   // Fetch data from Supabase
-  const fetchClients = async () => {
-    const { data, error } = await supabase
-      .from('clients')
-      .select('*')
-      .order('name', { ascending: true });
-    
-    if (!error) setClients(data || []);
+  const fetchData = async () => {
+    const [clientsRes, petsRes, appointmentsRes, hotelRes] = await Promise.all([
+      supabase.from('clients').select('id, name, whatsapp').order('name'),
+      supabase.from('pets').select('id, client_id, name, species, breed').order('name'),
+      supabase.from('bath_grooming_appointments').select('*').neq('status', 'cancelado'),
+      supabase.from('hotel_stays').select('*').neq('status', 'cancelado'),
+    ]);
+
+    if (!clientsRes.error) setClients(clientsRes.data || []);
+    if (!petsRes.error) setPets(petsRes.data || []);
+    if (!appointmentsRes.error) setAppointments(appointmentsRes.data || []);
+    if (!hotelRes.error) setHotelStays(hotelRes.data || []);
   };
 
-  const fetchPets = async () => {
-    const { data, error } = await supabase
-      .from('pets')
-      .select('*')
-      .order('name', { ascending: true });
-    
-    if (!error) setPets(data || []);
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  // Get date based on active tab
+  const getTargetDate = (): Date => {
+    if (activeTab === 'hoje') return startOfDay(new Date());
+    if (activeTab === 'amanha') return startOfDay(addDays(new Date(), 1));
+    return customDate ? startOfDay(customDate) : startOfDay(new Date());
   };
 
-  const fetchAppointments = async () => {
-    // Fetch all appointments that need billing (payment_status = pendente OR null)
-    // Include finalized services that haven't been paid
-    const { data, error } = await supabase
-      .from('bath_grooming_appointments')
-      .select('*')
-      .neq('status', 'cancelado');
-    
-    if (!error) setAppointments(data || []);
-  };
+  // Build pending payments for a specific date
+  const buildPaymentsForDate = (targetDate: Date): PendingPaymentItem[] => {
+    const items: PendingPaymentItem[] = [];
+    const targetDateStr = format(targetDate, 'yyyy-MM-dd');
 
-  const fetchHotelStays = async () => {
-    const { data, error } = await supabase
-      .from('hotel_stays')
-      .select('*')
-      .neq('status', 'cancelado');
-    
-    if (!error) setHotelStays(data || []);
-  };
-
-  const fetchClientPlans = async () => {
-    const { data, error } = await supabase
-      .from('client_plans')
-      .select('*')
-      .eq('active', true)
-      .gt('expires_at', new Date().toISOString());
-    
-    if (!error) setClientPlans(data || []);
-  };
-
-  const fetchServicePrices = async () => {
-    const { data, error } = await supabase
-      .from('service_prices')
-      .select('*');
-    
-    if (!error) setServicePrices(data || []);
-  };
-
-  const fetchServiceAddons = async () => {
-    const { data, error } = await supabase
-      .from('service_addons')
-      .select('*')
-      .eq('active', true);
-    
-    if (!error) setServiceAddons(data || []);
-  };
-
-  // Build pending payments list filtered by data_cobranca
-  const buildPendingPayments = () => {
-    const pending: PendingPaymentItem[] = [];
-    const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
-
-    // Add appointments filtered by data_cobranca (or start_datetime if no data_cobranca)
+    // Add appointments
     for (const apt of appointments) {
-      if (apt.status === 'cancelado') continue;
-      if (apt.payment_status === 'pago' || apt.payment_status === 'pago_antecipado' || apt.payment_status === 'isento') continue;
-      
-      // Use data_cobranca if available, otherwise fall back to start_datetime
       const aptCobrancaDate = apt.data_cobranca || format(new Date(apt.start_datetime), 'yyyy-MM-dd');
-      
-      // Filter by selected date (or show all if looking at future dates for early payment)
-      if (aptCobrancaDate !== selectedDateStr) continue;
-      
+      if (aptCobrancaDate !== targetDateStr) continue;
+
       const client = clients.find(c => c.id === apt.client_id);
       const pet = pets.find(p => p.id === apt.pet_id);
-      
+
       const groomingLabel = apt.grooming_type 
         ? groomingTypeLabels[apt.grooming_type] || apt.grooming_type
         : groomingTypeLabels[apt.service_type] || apt.service_type;
 
-      pending.push({
+      const isPaid = apt.payment_status === 'pago' || apt.payment_status === 'pago_antecipado' || apt.payment_status === 'isento';
+
+      items.push({
         id: `apt_${apt.id}`,
         type: 'banho_tosa',
         clientId: apt.client_id,
@@ -319,676 +185,260 @@ const FrenteCaixa = () => {
         price: apt.price || 50,
         serviceStatus: apt.status || 'agendado',
         paymentStatus: (apt.payment_status as PaymentStatus) || 'pendente',
-        date: apt.start_datetime,
+        time: format(new Date(apt.start_datetime), 'HH:mm'),
         sourceId: apt.id,
+        isPaid,
       });
     }
 
-    // Add hotel stays filtered by data_cobranca (or check_out if no data_cobranca)
+    // Add hotel stays
     for (const stay of hotelStays) {
-      if (stay.status === 'cancelado') continue;
-      if (stay.payment_status === 'pago' || stay.payment_status === 'pago_antecipado' || stay.payment_status === 'isento') continue;
-      
-      // Use data_cobranca if available, otherwise fall back to check_out
       const stayCobrancaDate = stay.data_cobranca || format(new Date(stay.check_out), 'yyyy-MM-dd');
-      const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
-      
-      if (stayCobrancaDate !== selectedDateStr) continue;
-      
+      if (stayCobrancaDate !== targetDateStr) continue;
+
       const client = clients.find(c => c.id === stay.client_id);
       const pet = pets.find(p => p.id === stay.pet_id);
-      
+
       const nights = Math.max(1, differenceInDays(new Date(stay.check_out), new Date(stay.check_in)));
       const totalPrice = stay.total_price || (nights * stay.daily_rate);
 
-      pending.push({
+      const isPaid = stay.payment_status === 'pago' || stay.payment_status === 'pago_antecipado' || stay.payment_status === 'isento';
+
+      items.push({
         id: `hotel_${stay.id}`,
         type: 'hotel',
         clientId: stay.client_id,
         clientName: client?.name || 'N/A',
         petId: stay.pet_id,
         petName: pet?.name || 'N/A',
-        description: stay.is_creche ? 'Creche (Day Care)' : `Hotel - ${nights} diária${nights > 1 ? 's' : ''}`,
+        description: stay.is_creche ? 'Creche' : `Hotel - ${nights} diária${nights > 1 ? 's' : ''}`,
         price: totalPrice,
         serviceStatus: stay.status || 'reservado',
         paymentStatus: (stay.payment_status as PaymentStatus) || 'pendente',
-        date: stay.check_out,
+        time: format(new Date(stay.check_out), 'HH:mm'),
         sourceId: stay.id,
+        isPaid,
       });
     }
 
-    // Sort: FINALIZED services with pending payment come FIRST (ready to be paid)
-    pending.sort((a, b) => {
-      // Finalized services come first as they're ready to be collected
+    // Sort: Paid items at bottom, then by time
+    items.sort((a, b) => {
+      if (a.isPaid && !b.isPaid) return 1;
+      if (!a.isPaid && b.isPaid) return -1;
+      // Finalized services come first
       if (a.serviceStatus === 'finalizado' && b.serviceStatus !== 'finalizado') return -1;
       if (b.serviceStatus === 'finalizado' && a.serviceStatus !== 'finalizado') return 1;
-      // Then "pronto" services
-      if (a.serviceStatus === 'pronto' && b.serviceStatus !== 'pronto') return -1;
-      if (b.serviceStatus === 'pronto' && a.serviceStatus !== 'pronto') return 1;
-      return new Date(a.date).getTime() - new Date(b.date).getTime();
+      return a.time.localeCompare(b.time);
     });
 
-    setPendingPayments(pending);
+    return items;
   };
 
-  useEffect(() => {
-    const loadData = async () => {
-      await Promise.all([
-        fetchClients(),
-        fetchPets(),
-        fetchAppointments(),
-        fetchHotelStays(),
-        fetchClientPlans(),
-        fetchServicePrices(),
-        fetchServiceAddons(),
-      ]);
-    };
-    loadData();
-  }, []);
+  // Memoized payments for each tab
+  const todayPayments = useMemo(() => 
+    buildPaymentsForDate(startOfDay(new Date())), 
+    [clients, pets, appointments, hotelStays]
+  );
 
-  // Auto-select from URL params (when redirected from ServicosDoDia)
-  useEffect(() => {
-    const appointmentIdParam = searchParams.get('appointmentId');
-    const clientIdParam = searchParams.get('clientId');
-    const petIdParam = searchParams.get('petId');
-    
-    // Priority 1: Load from appointmentId (new flow from ServicosDoDia)
-    if (appointmentIdParam && appointments.length > 0 && clients.length > 0 && pets.length > 0) {
-      const appointment = appointments.find(a => a.id === appointmentIdParam);
-      if (appointment) {
-        setSelectedClient(appointment.client_id);
-        // Pet will be set after client is selected and filteredPets updates
-        setTimeout(() => {
-          setSelectedPetId(appointment.pet_id);
-        }, 100);
-      }
-      return;
-    }
-    
-    // Priority 2: Legacy params (clientId/petId)
-    if (clientIdParam && clients.length > 0) {
-      setSelectedClient(clientIdParam);
-    }
-    if (petIdParam && pets.length > 0 && clientIdParam === selectedClient) {
-      setSelectedPetId(petIdParam);
-    }
-  }, [searchParams, clients, pets, appointments, selectedClient]);
+  const tomorrowPayments = useMemo(() => 
+    buildPaymentsForDate(startOfDay(addDays(new Date(), 1))), 
+    [clients, pets, appointments, hotelStays]
+  );
 
-  // Build pending payments when data or date changes
-  useEffect(() => {
-    if (clients.length > 0 && pets.length > 0) {
-      buildPendingPayments();
-    }
-  }, [clients, pets, appointments, hotelStays, selectedDate]);
-
-  // Filter pets when client changes
-  useEffect(() => {
-    if (selectedClient) {
-      const clientPets = pets.filter(p => p.client_id === selectedClient);
-      setFilteredPets(clientPets);
-      setSelectedPetId('');
-      setInvoiceItems([]);
-    } else {
-      setFilteredPets([]);
-      setSelectedPetId('');
-      setInvoiceItems([]);
-    }
-  }, [selectedClient, pets]);
-
-  // Load services when pet is selected
-  useEffect(() => {
-    if (!selectedPetId || !selectedClient) {
-      setInvoiceItems([]);
-      return;
-    }
-
-    const pet = pets.find(p => p.id === selectedPetId);
-    if (!pet) return;
-
-    const items: InvoiceItem[] = [];
-
-    // 1. Check for grooming appointments that need billing:
-    // - FINALIZED with payment_status != 'pago'/'isento' (main case after clicking "Finalizar")
-    // - OR still in progress (agendado, em_atendimento, pronto)
-    const petAppointments = appointments.filter(a => 
-      a.pet_id === selectedPetId && 
-      a.client_id === selectedClient &&
-      a.status !== 'cancelado' &&
-      a.payment_status !== 'pago' &&
-      a.payment_status !== 'isento'
-    );
-
-    // Check for active plan
-    const activePlan = clientPlans.find(cp => 
-      cp.pet_id === selectedPetId && 
-      cp.client_id === selectedClient && 
-      cp.active &&
-      cp.used_baths < cp.total_baths &&
-      new Date(cp.expires_at) > new Date()
-    );
-
-    const remainingCredits = activePlan
-      ? activePlan.total_baths - activePlan.used_baths 
-      : 0;
-
-    let usedCredits = 0;
-
-    for (const apt of petAppointments) {
-      // Calculate price for main service
-      let price = apt.price || 0;
-      if (!price) {
-        const priceMatch = servicePrices.find(sp => 
-          sp.size_category === pet.size && 
-          sp.service_type === (apt.grooming_type || apt.service_type)
-        );
-        price = priceMatch?.price || 50;
-      }
-
-      // Check if appointment uses plan credit OR has is_plan_usage flag
-      const isPlanUsage = Boolean(apt.is_plan_usage) || Boolean(apt.client_plan_id);
-      const canUseCredit = !isPlanUsage && usedCredits < remainingCredits;
-      if (canUseCredit) usedCredits++;
-      
-      // Main service is covered by plan if is_plan_usage or we're using available credits
-      const mainServiceCovered = isPlanUsage || canUseCredit;
-
-      const groomingLabel = apt.grooming_type 
-        ? groomingTypeLabels[apt.grooming_type] || apt.grooming_type
-        : groomingTypeLabels[apt.service_type] || apt.service_type;
-
-      // Add main service item
-      items.push({
-        id: `apt_${apt.id}`,
-        type: 'banho_tosa',
-        description: mainServiceCovered ? `${groomingLabel} (Plano)` : groomingLabel,
-        petName: pet.name,
-        unitPrice: price,
-        quantity: 1,
-        totalPrice: mainServiceCovered ? 0 : price,
-        coveredByPlan: mainServiceCovered,
-        sourceId: apt.id,
-        petId: pet.id,
-        serviceStatus: apt.status || 'agendado',
-        paymentStatus: 'pendente' as PaymentStatus,
-      });
-
-      // Add optional services (addons) - ALWAYS billed separately, even for plan usage
-      if (apt.optional_services && apt.optional_services.length > 0) {
-        for (const addonId of apt.optional_services) {
-          const addon = serviceAddons.find(sa => sa.id === addonId);
-          if (addon) {
-            items.push({
-              id: `addon_${apt.id}_${addonId}`,
-              type: 'extra',
-              description: addon.name,
-              petName: pet.name,
-              unitPrice: addon.price,
-              quantity: 1,
-              totalPrice: addon.price,
-              coveredByPlan: false, // Addons are NEVER covered by plan
-              sourceId: apt.id,
-              petId: pet.id,
-              serviceStatus: apt.status || 'agendado',
-              paymentStatus: 'pendente' as PaymentStatus,
-            });
-          }
-        }
-      }
-    }
-
-    // 2. Check for hotel stays that need billing (not paid yet)
-    const petHotelStays = hotelStays.filter(h => 
-      h.pet_id === selectedPetId && 
-      h.client_id === selectedClient &&
-      h.status !== 'cancelado' &&
-      h.payment_status !== 'pago' &&
-      h.payment_status !== 'isento'
-    );
-
-    for (const stay of petHotelStays) {
-      const checkIn = new Date(stay.check_in);
-      const checkOut = new Date(stay.check_out);
-      const nights = Math.max(1, differenceInDays(checkOut, checkIn));
-      const totalPrice = stay.total_price || (nights * stay.daily_rate);
-
-      items.push({
-        id: `hotel_${stay.id}`,
-        type: 'hotel',
-        description: stay.is_creche ? 'Creche (Day Care)' : `Hotel - ${nights} diária${nights > 1 ? 's' : ''}`,
-        petName: pet.name,
-        unitPrice: stay.daily_rate,
-        quantity: nights,
-        totalPrice: totalPrice,
-        coveredByPlan: false,
-        sourceId: stay.id,
-        petId: pet.id,
-        serviceStatus: stay.status || 'reservado',
-        paymentStatus: 'pendente' as PaymentStatus,
-      });
-    }
-
-    setInvoiceItems(items);
-  }, [selectedPetId, selectedClient, pets, appointments, hotelStays, clientPlans, servicePrices, serviceAddons]);
-
-  // Add extra item
-  const handleAddExtraItem = () => {
-    if (!extraDescription.trim() || !extraPrice) {
-      toast({
-        title: "Campos obrigatórios",
-        description: "Informe descrição e valor.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const price = parseFloat(extraPrice.replace(',', '.'));
-    if (isNaN(price) || price <= 0) {
-      toast({
-        title: "Valor inválido",
-        description: "Informe um valor válido.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const newItem: InvoiceItem = {
-      id: `extra_${Date.now()}`,
-      type: 'extra',
-      description: extraDescription,
-      unitPrice: price,
-      quantity: 1,
-      totalPrice: price,
-      coveredByPlan: false,
-    };
-
-    setInvoiceItems(prev => [...prev, newItem]);
-    setExtraDescription('');
-    setExtraPrice('');
-
-    toast({
-      title: "Item adicionado",
-      description: `${extraDescription} - R$ ${price.toFixed(2)}`,
-    });
-  };
-
-  // Remove item from invoice
-  const handleRemoveItem = (itemId: string) => {
-    setInvoiceItems(prev => prev.filter(item => item.id !== itemId));
-  };
+  const customDatePayments = useMemo(() => 
+    customDate ? buildPaymentsForDate(startOfDay(customDate)) : [], 
+    [clients, pets, appointments, hotelStays, customDate]
+  );
 
   // Calculate totals
-  const subtotal = invoiceItems.reduce((acc, item) => acc + item.unitPrice * item.quantity, 0);
-  const planDiscount = invoiceItems
-    .filter(item => item.coveredByPlan)
-    .reduce((acc, item) => acc + item.unitPrice * item.quantity, 0);
-  const totalToPay = subtotal - planDiscount;
+  const todayPending = todayPayments.filter(p => !p.isPaid);
+  const todayPaid = todayPayments.filter(p => p.isPaid);
+  const todayPendingTotal = todayPending.reduce((acc, p) => acc + p.price, 0);
+  const todayPaidTotal = todayPaid.reduce((acc, p) => acc + p.price, 0);
 
-  const itemsCoveredByPlan = invoiceItems.filter(item => item.coveredByPlan);
+  const tomorrowPending = tomorrowPayments.filter(p => !p.isPaid);
 
-  const todaySales = sales.filter(s => 
-    new Date(s.createdAt).toDateString() === new Date().toDateString()
-  );
-  const todayTotal = todaySales.reduce((acc, s) => acc + s.amount, 0);
-  
-  // Count confirmed vs pending payments in today's sales
-  const confirmedTodayTotal = todaySales
-    .filter(s => confirmedPayments.has(s.id) || s.amount > 0)
-    .reduce((acc, s) => acc + s.amount, 0);
-
-  // Open payment confirmation dialog for invoice
-  const handleOpenPaymentConfirmation = () => {
-    if (!selectedClient || invoiceItems.length === 0) {
-      toast({
-        title: "Campos obrigatórios",
-        description: "Selecione cliente e adicione itens à fatura.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const client = clients.find(c => c.id === selectedClient);
-    const pet = pets.find(p => p.id === selectedPetId);
-    const itemDescriptions = invoiceItems.map(item => item.description).join(', ');
-
-    setPendingConfirmation({
-      type: 'invoice',
-      amount: totalToPay,
-      clientName: client?.name || 'Cliente',
-      description: pet ? `${pet.name}: ${itemDescriptions}` : itemDescriptions,
-    });
+  // Open payment confirmation dialog
+  const handleOpenPayment = (item: PendingPaymentItem, isEarlyPayment: boolean = false) => {
+    setPendingConfirmation({ item, isEarlyPayment });
     setConfirmDialogOpen(true);
   };
 
-  // Open payment confirmation dialog for quick pay
-  const handleOpenQuickPayConfirmation = (item: PendingPaymentItem) => {
-    if (!item.sourceId) {
-      toast({
-        title: "Erro: Registro não encontrado",
-        description: "Registro financeiro não encontrado para este serviço.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setPendingConfirmation({
-      type: 'quickPay',
-      item,
-      amount: item.price,
-      clientName: item.clientName,
-      description: `${item.petName}: ${item.description}`,
-    });
-    setConfirmDialogOpen(true);
-  };
-
-  // Handle confirmed payment from dialog
+  // Handle confirmed payment
   const handlePaymentConfirmed = async (confirmedAmount: number, paymentMethod: PaymentMethod, notes?: string) => {
     if (!pendingConfirmation) return;
 
+    const { item, isEarlyPayment } = pendingConfirmation;
     setConfirmDialogOpen(false);
-
-    if (pendingConfirmation.type === 'invoice') {
-      await executeFinalizeSale(confirmedAmount, paymentMethod, notes);
-    } else if (pendingConfirmation.item) {
-      await executeQuickPay(pendingConfirmation.item, confirmedAmount, paymentMethod, notes);
-    }
-
-    setPendingConfirmation(null);
-  };
-
-  // Cancel payment confirmation
-  const handleCancelConfirmation = () => {
-    setConfirmDialogOpen(false);
-    setPendingConfirmation(null);
-  };
-
-  const executeFinalizeSale = async (confirmedAmount: number, paymentMethod: PaymentMethod, notes?: string) => {
-    if (!selectedClient || invoiceItems.length === 0) return;
-
     setIsLoading(true);
 
     try {
       const now = new Date().toISOString();
-
-      // 1. Update appointments - mark payment as PAID with confirmed payment method
-      const appointmentItems = invoiceItems.filter(item => item.type === 'banho_tosa' && item.sourceId);
-      for (const item of appointmentItems) {
-        const itemPaymentStatus = item.coveredByPlan ? 'isento' : 'pago';
-        
-        const { error: aptError } = await supabase
-          .from('bath_grooming_appointments')
-          .update({ 
-            status: 'finalizado',
-            payment_status: itemPaymentStatus,
-            payment_method: item.coveredByPlan ? null : paymentMethod,
-            paid_at: now,
-          } as any)
-          .eq('id', item.sourceId);
-
-        if (aptError) {
-          console.error('Error updating appointment:', aptError);
-          throw aptError;
-        }
-
-        // Deduct plan credit if used
-        if (item.coveredByPlan && item.petId) {
-          const activePlan = clientPlans.find(cp => 
-            cp.pet_id === item.petId && 
-            cp.client_id === selectedClient && 
-            cp.active &&
-            cp.used_baths < cp.total_baths
-          );
-
-          if (activePlan) {
-            const newUsedBaths = activePlan.used_baths + 1;
-            await supabase
-              .from('client_plans')
-              .update({ 
-                used_baths: newUsedBaths,
-                active: newUsedBaths < activePlan.total_baths
-              })
-              .eq('id', activePlan.id);
-          }
-        }
-      }
-
-      // 2. Update hotel stays - mark as PAID with confirmed payment method
-      const hotelItems = invoiceItems.filter(item => item.type === 'hotel' && item.sourceId);
-      for (const item of hotelItems) {
-        const { error: hotelError } = await supabase
-          .from('hotel_stays')
-          .update({ 
-            status: 'check_out',
-            payment_status: 'pago',
-            payment_method: paymentMethod,
-            paid_at: now,
-          } as any)
-          .eq('id', item.sourceId);
-
-        if (hotelError) {
-          console.error('Error updating hotel stay:', hotelError);
-          throw hotelError;
-        }
-      }
-
-      // 3. Update stock for products sold
-      const productItems = invoiceItems.filter(item => item.type === 'produto' && item.productId && item.controlStock);
-      for (const item of productItems) {
-        const { data: product } = await (supabase as any).from('products')
-          .select('stock_quantity')
-          .eq('id', item.productId)
-          .single();
-        
-        if (product) {
-          const newStock = Math.max(0, product.stock_quantity - item.quantity);
-          await (supabase as any).from('products')
-            .update({ stock_quantity: newStock, updated_at: new Date().toISOString() })
-            .eq('id', item.productId);
-          
-          await (supabase as any).from('stock_movements')
-            .insert({
-              product_id: item.productId,
-              type: 'venda',
-              quantity: item.quantity,
-              reason: `Venda para ${clients.find(c => c.id === selectedClient)?.name}`,
-            });
-        }
-      }
-
-      // 4. Update client last_purchase
-      await supabase
-        .from('clients')
-        .update({ last_purchase: now })
-        .eq('id', selectedClient);
-
-      // 5. Create sale record with CONFIRMED amount
-      const client = clients.find(c => c.id === selectedClient);
-      const pet = pets.find(p => p.id === selectedPetId);
-      const itemDescriptions = invoiceItems.map(item => item.description).join(', ');
-      
-      const saleId = String(Date.now());
-      const newSale: Sale = {
-        id: saleId,
-        clientId: selectedClient,
-        description: `${pet?.name}: ${itemDescriptions}${notes ? ` (${notes})` : ''}`,
-        amount: confirmedAmount, // Use confirmed amount from dialog
-        paymentMethod: paymentMethod, // Use confirmed payment method
-        createdAt: now,
-      };
-
-      setSales(prev => [newSale, ...prev]);
-
-      // Track as confirmed payment
-      setConfirmedPayments(prev => new Map(prev).set(saleId, {
-        confirmedAmount,
-        paymentMethod,
-        confirmedAt: now,
-        notes,
-      }));
-
-      const planMessage = itemsCoveredByPlan.length > 0 
-        ? ` (${itemsCoveredByPlan.length} serviço(s) coberto(s) pelo plano)` 
-        : '';
-
-      toast({
-        title: "✅ Pagamento Confirmado!",
-        description: `Cobrança de R$ ${confirmedAmount.toFixed(2)} via ${paymentMethods.find(m => m.value === paymentMethod)?.label} para ${client?.name}.${planMessage}`,
-      });
-
-      // Reset form
-      setSelectedClient('');
-      setSelectedPetId('');
-      setInvoiceItems([]);
-      
-      // Refresh data from database to update UI immediately
-      await Promise.all([
-        fetchAppointments(),
-        fetchHotelStays(),
-        fetchClientPlans(),
-      ]);
-
-    } catch (error) {
-      console.error('Error finalizing sale:', error);
-      toast({
-        title: "Erro",
-        description: "Ocorreu um erro ao registrar o pagamento.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Execute quick pay with confirmed amount
-  const executeQuickPay = async (item: PendingPaymentItem, confirmedAmount: number, paymentMethod: PaymentMethod, notes?: string) => {
-    if (!item.sourceId) return;
-
-    setIsLoading(true);
-    try {
-      const now = new Date().toISOString();
+      const paymentStatus = isEarlyPayment ? 'pago_antecipado' : 'pago';
 
       if (item.type === 'banho_tosa') {
-        const { data: existing, error: checkError } = await supabase
-          .from('bath_grooming_appointments')
-          .select('id, status')
-          .eq('id', item.sourceId)
-          .maybeSingle();
-
-        if (checkError || !existing) {
-          throw new Error('Registro financeiro não encontrado para este serviço.');
-        }
-
         const { error } = await supabase
           .from('bath_grooming_appointments')
           .update({ 
             status: 'finalizado',
-            payment_status: 'pago',
+            payment_status: paymentStatus,
             payment_method: paymentMethod,
             paid_at: now,
-            price: confirmedAmount, // Update with confirmed amount
+            price: confirmedAmount,
           } as any)
           .eq('id', item.sourceId);
 
         if (error) throw error;
       } else {
-        const { data: existing, error: checkError } = await supabase
-          .from('hotel_stays')
-          .select('id, status')
-          .eq('id', item.sourceId)
-          .maybeSingle();
-
-        if (checkError || !existing) {
-          throw new Error('Registro financeiro não encontrado para este serviço.');
-        }
-
         const { error } = await supabase
           .from('hotel_stays')
           .update({ 
             status: 'check_out',
-            payment_status: 'pago',
+            payment_status: paymentStatus,
             payment_method: paymentMethod,
             paid_at: now,
-            total_price: confirmedAmount, // Update with confirmed amount
+            total_price: confirmedAmount,
           } as any)
           .eq('id', item.sourceId);
 
         if (error) throw error;
       }
 
-      // Update client
+      // Update client last_purchase
       await supabase
         .from('clients')
         .update({ last_purchase: now })
         .eq('id', item.clientId);
 
-      // Add to sales with confirmed amount
-      const saleId = String(Date.now());
-      const newSale: Sale = {
-        id: saleId,
-        clientId: item.clientId,
-        description: `${item.petName}: ${item.description}${notes ? ` (${notes})` : ''}`,
-        amount: confirmedAmount,
-        paymentMethod: paymentMethod,
-        createdAt: now,
-      };
-      setSales(prev => [newSale, ...prev]);
-
-      // Track confirmed payment
-      setConfirmedPayments(prev => new Map(prev).set(saleId, {
-        confirmedAmount,
-        paymentMethod,
-        confirmedAt: now,
-        notes,
-      }));
+      // Track sale
+      setTodaySales(prev => [...prev, { amount: confirmedAmount, method: paymentMethod }]);
 
       toast({
-        title: "✅ Pagamento Confirmado!",
-        description: `${item.description} - R$ ${confirmedAmount.toFixed(2)} via ${paymentMethods.find(m => m.value === paymentMethod)?.label}`,
+        title: isEarlyPayment ? "✅ Pagamento Antecipado Registrado!" : "✅ Pagamento Confirmado!",
+        description: `${item.petName}: ${item.description} - R$ ${confirmedAmount.toFixed(2)} via ${paymentMethods.find(m => m.value === paymentMethod)?.label}`,
       });
 
       // Refresh data
-      await Promise.all([
-        fetchAppointments(),
-        fetchHotelStays(),
-      ]);
+      await fetchData();
     } catch (error: any) {
-      console.error('Quick pay error:', error);
+      console.error('Payment error:', error);
       toast({
         title: "Erro ao registrar pagamento",
-        description: error?.message || "Registro financeiro não encontrado para este serviço.",
+        description: error?.message || "Ocorreu um erro ao processar o pagamento.",
         variant: "destructive",
       });
     } finally {
       setIsLoading(false);
+      setPendingConfirmation(null);
     }
   };
 
-  const getClient = (clientId: string) => clients.find(c => c.id === clientId);
-  const selectedPet = pets.find(p => p.id === selectedPetId);
+  // Render payment item row
+  const renderPaymentItem = (item: PendingPaymentItem, isEarlyPayment: boolean = false) => (
+    <motion.div
+      key={item.id}
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className={cn(
+        "flex items-center justify-between p-4 rounded-xl border transition-all",
+        item.isPaid
+          ? "bg-green-50 border-green-200 opacity-70"
+          : item.serviceStatus === 'finalizado'
+            ? "bg-red-50 border-red-300"
+            : "bg-card border-border hover:border-primary/30"
+      )}
+    >
+      {/* Left: Info */}
+      <div className="flex items-center gap-4 flex-1 min-w-0">
+        {/* Icon */}
+        <div className={cn(
+          "w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0",
+          item.type === 'banho_tosa' ? "bg-primary/10" : "bg-orange-100"
+        )}>
+          {item.type === 'banho_tosa' ? (
+            <Scissors className="w-5 h-5 text-primary" />
+          ) : (
+            <Hotel className="w-5 h-5 text-orange-500" />
+          )}
+        </div>
 
-  // Check if selected pet has active plan
-  const activePlanForPet = selectedPetId ? clientPlans.find(cp => 
-    cp.pet_id === selectedPetId && 
-    cp.client_id === selectedClient && 
-    cp.active &&
-    cp.used_baths < cp.total_baths &&
-    new Date(cp.expires_at) > new Date()
-  ) : null;
+        {/* Details */}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="font-semibold text-foreground truncate">{item.clientName}</span>
+            <span className="text-muted-foreground">•</span>
+            <span className="text-muted-foreground truncate">{item.petName}</span>
+          </div>
+          <div className="flex items-center gap-2 mt-1">
+            <span className="text-sm text-muted-foreground">{item.description}</span>
+            <Badge variant="outline" className="text-xs">
+              {item.time}
+            </Badge>
+          </div>
+          <div className="flex items-center gap-2 mt-1">
+            <Badge variant="outline" className="text-xs">
+              {statusLabels[item.serviceStatus] || item.serviceStatus}
+            </Badge>
+            {item.isPaid ? (
+              <Badge className="text-xs bg-green-100 text-green-700 border-0">
+                <Check className="w-3 h-3 mr-1" />
+                {item.paymentStatus === 'pago_antecipado' ? 'Pago Antecipado' : 'Pago'}
+              </Badge>
+            ) : (
+              <Badge variant="destructive" className="text-xs">
+                <Clock className="w-3 h-3 mr-1" />
+                Pendente
+              </Badge>
+            )}
+          </div>
+        </div>
+      </div>
 
-  const remainingPlanCredits = activePlanForPet 
-    ? activePlanForPet.total_baths - activePlanForPet.used_baths 
-    : 0;
+      {/* Right: Price & Action */}
+      <div className="flex items-center gap-4 flex-shrink-0">
+        <div className="text-right">
+          <p className={cn(
+            "text-lg font-bold",
+            item.isPaid ? "text-green-600" : "text-foreground"
+          )}>
+            R$ {item.price.toFixed(2)}
+          </p>
+        </div>
 
-  // Count pending payments - FINALIZED services waiting for payment are critical
-  const totalPendingPayments = pendingPayments.length;
-  const finishedPendingPayments = pendingPayments.filter(p => p.serviceStatus === 'finalizado' || p.serviceStatus === 'pronto');
+        {!item.isPaid && (
+          <Button
+            onClick={() => handleOpenPayment(item, isEarlyPayment)}
+            disabled={isLoading}
+            className={cn(
+              "gap-2",
+              isEarlyPayment 
+                ? "bg-orange-500 hover:bg-orange-600" 
+                : "bg-green-600 hover:bg-green-700"
+            )}
+          >
+            <CheckCircle2 className="w-4 h-4" />
+            {isEarlyPayment ? 'Antecipar' : 'Receber'}
+          </Button>
+        )}
+      </div>
+    </motion.div>
+  );
+
+  // Render empty state
+  const renderEmptyState = (message: string) => (
+    <div className="text-center py-12 text-muted-foreground">
+      <Calendar className="w-12 h-12 mx-auto mb-4 opacity-50" />
+      <p>{message}</p>
+    </div>
+  );
 
   return (
-    <div className="p-8">
+    <div className="p-6 lg:p-8">
       {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="mb-8"
+        className="mb-6"
       >
         <div className="flex items-center justify-between">
           <div>
@@ -997,542 +447,258 @@ const FrenteCaixa = () => {
               Frente de Caixa
             </h1>
             <p className="text-muted-foreground mt-1">
-              Cobrança unificada - Serviços + Hotel + Itens Extras
+              Visão operacional • Cobranças do dia
             </p>
           </div>
-          
-          {/* Date Selector */}
-          <DateSelector selectedDate={selectedDate} onDateChange={setSelectedDate} />
-          
-          {/* Pending Alert */}
-          {finishedPendingPayments.length > 0 && (
-            <div className="flex items-center gap-2 px-4 py-2 bg-red-100 border border-red-300 rounded-xl text-red-700">
-              <AlertCircle className="w-5 h-5" />
-              <span className="font-medium">{finishedPendingPayments.length} serviço(s) finalizado(s) aguardando pagamento</span>
+
+          {/* Summary Cards */}
+          <div className="flex items-center gap-4">
+            {todayPending.length > 0 && (
+              <div className="flex items-center gap-2 px-4 py-2 bg-red-100 border border-red-300 rounded-xl text-red-700">
+                <AlertCircle className="w-5 h-5" />
+                <span className="font-medium">{todayPending.length} pendente{todayPending.length !== 1 ? 's' : ''}</span>
+              </div>
+            )}
+            <div className="px-4 py-2 bg-primary/10 border border-primary/20 rounded-xl">
+              <span className="text-sm text-muted-foreground">Recebido hoje</span>
+              <p className="text-lg font-bold text-primary">
+                R$ {todayPaidTotal.toFixed(2)}
+              </p>
             </div>
-          )}
+          </div>
         </div>
       </motion.div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Column - Invoice Builder */}
-        <motion.div
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: 0.1 }}
-          className="lg:col-span-2 space-y-6"
-        >
-          {/* Client & Pet Selection */}
-          <Card className="border-0 shadow-soft">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Plus className="w-5 h-5 text-primary" />
-                Nova Cobrança
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                {/* Client Selection */}
-                <div>
-                  <Label>Cliente *</Label>
-                  <Select value={selectedClient} onValueChange={setSelectedClient}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione o cliente" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {clients.map(client => (
-                        <SelectItem key={client.id} value={client.id}>
-                          {client.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Pet Selection */}
-                <div>
-                  <Label>Pet *</Label>
-                  <Select 
-                    value={selectedPetId} 
-                    onValueChange={setSelectedPetId}
-                    disabled={!selectedClient}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder={selectedClient ? "Selecione o pet" : "Selecione um cliente primeiro"} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {filteredPets.map(pet => (
-                        <SelectItem key={pet.id} value={pet.id}>
-                          {pet.name} ({pet.breed || pet.species})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              {/* Plan Info Badge */}
-              {selectedPetId && activePlanForPet && (
-                <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-xl">
-                  <Gift className="w-5 h-5 text-green-600" />
-                  <div>
-                    <p className="font-medium text-green-800">
-                      {selectedPet?.name} tem plano ativo
-                    </p>
-                    <p className="text-sm text-green-600">
-                      {remainingPlanCredits} crédito{remainingPlanCredits !== 1 ? 's' : ''} disponível{remainingPlanCredits !== 1 ? 'is' : ''}
-                    </p>
-                  </div>
-                </div>
+      {/* Main Tabs */}
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="space-y-6">
+        <div className="flex items-center gap-4">
+          <TabsList className="grid grid-cols-2 w-[300px]">
+            <TabsTrigger value="hoje" className="gap-2">
+              <Calendar className="w-4 h-4" />
+              Hoje
+              {todayPending.length > 0 && (
+                <Badge variant="destructive" className="ml-1 h-5 w-5 p-0 flex items-center justify-center text-xs">
+                  {todayPending.length}
+                </Badge>
               )}
-            </CardContent>
-          </Card>
+            </TabsTrigger>
+            <TabsTrigger value="amanha" className="gap-2">
+              <Calendar className="w-4 h-4" />
+              Amanhã
+              {tomorrowPending.length > 0 && (
+                <Badge variant="secondary" className="ml-1 h-5 w-5 p-0 flex items-center justify-center text-xs">
+                  {tomorrowPending.length}
+                </Badge>
+              )}
+            </TabsTrigger>
+          </TabsList>
 
-          {/* Invoice Items */}
-          {selectedPetId && (
-            <Card className="border-0 shadow-soft">
-              <CardHeader>
-                <CardTitle className="text-lg">Itens da Fatura</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {invoiceItems.length === 0 ? (
-                  <p className="text-muted-foreground text-center py-4">
-                    Nenhum serviço com pagamento pendente para este pet.
-                    <br />
-                    <span className="text-sm">Adicione itens extras abaixo se necessário.</span>
-                  </p>
-                ) : (
-                  <div className="space-y-3">
-                    {invoiceItems.map((item) => (
-                      <motion.div
-                        key={item.id}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className={cn(
-                          "flex items-center justify-between p-4 rounded-xl border",
-                          item.coveredByPlan 
-                            ? "bg-green-50 border-green-200" 
-                            : item.paymentStatus === 'pendente'
-                              ? "bg-red-50 border-red-200"
-                              : "bg-muted/30 border-border"
-                        )}
-                      >
-                        <div className="flex items-center gap-3">
-                          {item.type === 'banho_tosa' && <Scissors className="w-5 h-5 text-primary" />}
-                          {item.type === 'hotel' && <Hotel className="w-5 h-5 text-orange-500" />}
-                          {item.type === 'extra' && <Package className="w-5 h-5 text-purple-500" />}
-                          
-                          <div>
-                            <p className="font-medium">{item.description}</p>
-                            {item.petName && (
-                              <p className="text-sm text-muted-foreground">{item.petName}</p>
-                            )}
-                            {item.serviceStatus && item.type !== 'extra' && (
-                              <div className="flex items-center gap-2 mt-1">
-                                <Badge variant="outline" className="text-xs">
-                                  {statusLabels[item.serviceStatus] || item.serviceStatus}
-                                </Badge>
-                                {item.paymentStatus === 'pendente' && (
-                                  <Badge variant="destructive" className="text-xs">
-                                    <Clock className="w-3 h-3 mr-1" />
-                                    Pgto Pendente
-                                  </Badge>
-                                )}
-                              </div>
-                            )}
-                            {item.type === 'hotel' && item.quantity > 1 && (
-                              <p className="text-xs text-muted-foreground">
-                                {item.quantity}x R$ {item.unitPrice.toFixed(2)}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                        
-                        <div className="flex items-center gap-4">
-                          {item.coveredByPlan ? (
-                            <Badge className="bg-green-100 text-green-700 border-0">
-                              <Check className="w-3 h-3 mr-1" />
-                              Coberto pelo Plano
-                            </Badge>
-                          ) : (
-                            <span className="font-bold text-primary">
-                              R$ {item.totalPrice.toFixed(2)}
-                            </span>
-                          )}
-                          
-                          {item.type === 'extra' && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleRemoveItem(item.id)}
-                              className="text-red-500 hover:text-red-700 hover:bg-red-50"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          )}
-                        </div>
-                      </motion.div>
-                    ))}
-                  </div>
-                )}
+          {/* Other dates picker */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-2">
+                <Calendar className="w-4 h-4" />
+                Outra Data
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <CalendarComponent
+                mode="single"
+                selected={customDate}
+                onSelect={(date) => {
+                  setCustomDate(date);
+                  if (date) setActiveTab('outra');
+                }}
+                initialFocus
+                className="pointer-events-auto"
+              />
+            </PopoverContent>
+          </Popover>
 
-                <Separator />
-
-                {/* Products & Extra Items Section */}
-                <div className="space-y-4">
-                  <h4 className="font-semibold flex items-center gap-2">
-                    <ShoppingBag className="w-4 h-4" />
-                    Produtos do Estoque
-                  </h4>
-                  <ProductSelector
-                    onSelectProduct={(product, quantity) => {
-                      const newItem: InvoiceItem = {
-                        id: `prod_${product.id}_${Date.now()}`,
-                        type: 'produto',
-                        description: product.name,
-                        unitPrice: product.sale_price,
-                        quantity: quantity,
-                        totalPrice: product.sale_price * quantity,
-                        coveredByPlan: false,
-                        productId: product.id,
-                        controlStock: product.control_stock,
-                      };
-                      setInvoiceItems(prev => [...prev, newItem]);
-                      toast({
-                        title: "Produto adicionado",
-                        description: `${quantity}x ${product.name}`,
-                      });
-                    }}
-                    trigger={
-                      <Button variant="outline" className="w-full gap-2">
-                        <Package className="w-4 h-4" />
-                        Adicionar Produto do Estoque
-                      </Button>
-                    }
-                  />
-                  
-                  <div className="pt-2">
-                    <h4 className="font-semibold mb-3 flex items-center gap-2">
-                      <Package className="w-4 h-4" />
-                      Item Avulso (sem estoque)
-                    </h4>
-                    <div className="grid grid-cols-3 gap-3">
-                      <Input
-                        placeholder="Descrição"
-                        value={extraDescription}
-                        onChange={(e) => setExtraDescription(e.target.value)}
-                        className="col-span-2"
-                      />
-                      <div className="flex gap-2">
-                        <Input
-                          placeholder="Valor"
-                          value={extraPrice}
-                          onChange={(e) => setExtraPrice(e.target.value)}
-                          type="text"
-                          className="w-24"
-                        />
-                        <Button onClick={handleAddExtraItem} size="icon">
-                          <Plus className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+          {activeTab === 'outra' && customDate && (
+            <Badge variant="outline" className="text-sm">
+              {format(customDate, "dd 'de' MMMM", { locale: ptBR })}
+            </Badge>
           )}
+        </div>
 
-          {/* Payment & Finalize */}
-          {invoiceItems.length > 0 && (
-            <Card className="border-0 shadow-soft">
-              <CardContent className="p-6 space-y-6">
-                {/* Summary */}
-                <div className="space-y-3">
-                  <div className="flex justify-between text-muted-foreground">
-                    <span>Subtotal</span>
-                    <span>R$ {subtotal.toFixed(2)}</span>
-                  </div>
-                  {planDiscount > 0 && (
-                    <div className="flex justify-between text-green-600">
-                      <span className="flex items-center gap-2">
-                        <Gift className="w-4 h-4" />
-                        Desconto do Plano
-                      </span>
-                      <span>- R$ {planDiscount.toFixed(2)}</span>
-                    </div>
-                  )}
-                  <Separator />
-                  <div className="flex justify-between text-xl font-bold">
-                    <span>Total a Cobrar</span>
-                    <span className="text-primary">R$ {totalToPay.toFixed(2)}</span>
-                  </div>
-                </div>
-
-                {/* Payment Method */}
-                <div>
-                  <Label className="mb-3 block">Forma de Pagamento</Label>
-                  <div className="grid grid-cols-4 gap-3">
-                    {paymentMethods.map(method => {
-                      const Icon = method.icon;
-                      return (
-                        <button
-                          key={method.value}
-                          onClick={() => setSelectedPayment(method.value)}
-                          className={cn(
-                            "p-4 rounded-xl border-2 flex flex-col items-center gap-2 transition-all",
-                            selectedPayment === method.value
-                              ? "border-primary bg-primary/5"
-                              : "border-border hover:border-primary/30"
-                          )}
-                        >
-                          <Icon className={cn(
-                            "w-6 h-6",
-                            selectedPayment === method.value ? "text-primary" : "text-muted-foreground"
-                          )} />
-                          <span className={cn(
-                            "text-sm font-medium",
-                            selectedPayment === method.value ? "text-primary" : "text-muted-foreground"
-                          )}>
-                            {method.label}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* NF-e Toggle - DISABLED via feature flag */}
-                {/* A emissão de documentos fiscais para clientes finais é de 
-                    responsabilidade do pet shop e não faz parte deste plano no momento. */}
-
-                {/* Finalize Button - Opens confirmation dialog */}
-                <Button 
-                  className="w-full h-14 text-lg bg-gradient-success hover:opacity-90"
-                  onClick={handleOpenPaymentConfirmation}
-                  disabled={isLoading}
-                >
-                  <CheckCircle2 className="w-5 h-5 mr-2" />
-                  {isLoading ? 'Processando...' : `Confirmar Pagamento - R$ ${totalToPay.toFixed(2)}`}
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Pending Payments List */}
-          {pendingPayments.length > 0 && !selectedPetId && (
-            <Card className="border-0 shadow-soft border-l-4 border-l-red-500">
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2 text-red-600">
-                  <AlertCircle className="w-5 h-5" />
-                  Pagamentos Pendentes ({totalPendingPayments})
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3 max-h-[400px] overflow-y-auto">
-                  {pendingPayments.map((item) => (
-                    <motion.div
-                      key={item.id}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
+        {/* Payment Method Quick Select */}
+        <Card className="border-0 shadow-soft">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-4">
+              <span className="text-sm font-medium text-muted-foreground">Forma padrão:</span>
+              <div className="flex gap-2">
+                {paymentMethods.map(method => {
+                  const Icon = method.icon;
+                  return (
+                    <button
+                      key={method.value}
+                      onClick={() => setSelectedPayment(method.value)}
                       className={cn(
-                        "flex items-center justify-between p-4 rounded-xl border",
-                        item.serviceStatus === 'finalizado'
-                          ? "bg-red-50 border-red-300"
-                          : "bg-amber-50 border-amber-200"
+                        "px-3 py-2 rounded-lg border-2 flex items-center gap-2 transition-all text-sm",
+                        selectedPayment === method.value
+                          ? "border-primary bg-primary/5 text-primary"
+                          : "border-border hover:border-primary/30 text-muted-foreground"
                       )}
                     >
-                      <div className="flex items-center gap-3">
-                        {item.type === 'banho_tosa' ? (
-                          <Scissors className="w-5 h-5 text-primary" />
-                        ) : (
-                          <Hotel className="w-5 h-5 text-orange-500" />
-                        )}
-                        
-                        <div>
-                          <p className="font-medium">{item.description}</p>
-                          <p className="text-sm text-muted-foreground">
-                            {item.petName} • {item.clientName}
-                          </p>
-                          <div className="flex items-center gap-2 mt-1">
-                            <Badge variant="outline" className="text-xs">
-                              {statusLabels[item.serviceStatus] || item.serviceStatus}
-                            </Badge>
-                            <Badge variant="destructive" className="text-xs">
-                              <Clock className="w-3 h-3 mr-1" />
-                              Pgto Pendente
-                            </Badge>
-                          </div>
-                        </div>
-                      </div>
-                      
-                      <div className="flex items-center gap-3">
-                        <span className="font-bold text-red-600">
-                          R$ {item.price.toFixed(2)}
-                        </span>
-                        <Button
-                          size="sm"
-                          onClick={() => handleOpenQuickPayConfirmation(item)}
-                          disabled={isLoading}
-                          className="bg-green-600 hover:bg-green-700"
-                        >
-                          <CheckCircle2 className="w-4 h-4 mr-1" />
-                          Confirmar
-                        </Button>
-                      </div>
-                    </motion.div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </motion.div>
+                      <Icon className="w-4 h-4" />
+                      {method.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
-        {/* Right Column - Today's Summary */}
-        <motion.div
-          initial={{ opacity: 0, x: 20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: 0.2 }}
-          className="space-y-6"
-        >
-          {/* Payment Method Quick Select for pending list */}
-          {!selectedPetId && pendingPayments.length > 0 && (
-            <Card className="border-0 shadow-soft">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base">Forma de Pagamento</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 gap-2">
-                  {paymentMethods.map(method => {
-                    const Icon = method.icon;
-                    return (
-                      <button
-                        key={method.value}
-                        onClick={() => setSelectedPayment(method.value)}
-                        className={cn(
-                          "p-3 rounded-xl border-2 flex items-center gap-2 transition-all",
-                          selectedPayment === method.value
-                            ? "border-primary bg-primary/5"
-                            : "border-border hover:border-primary/30"
-                        )}
-                      >
-                        <Icon className={cn(
-                          "w-4 h-4",
-                          selectedPayment === method.value ? "text-primary" : "text-muted-foreground"
-                        )} />
-                        <span className={cn(
-                          "text-sm font-medium",
-                          selectedPayment === method.value ? "text-primary" : "text-muted-foreground"
-                        )}>
-                          {method.label}
-                        </span>
-                      </button>
-                    );
+        {/* TODAY Tab */}
+        <TabsContent value="hoje" className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold flex items-center gap-2">
+              Cobranças de Hoje
+              <Badge variant="outline">
+                {format(new Date(), "dd/MM/yyyy")}
+              </Badge>
+            </h2>
+            <div className="text-sm text-muted-foreground">
+              {todayPayments.length} registro{todayPayments.length !== 1 ? 's' : ''}
+            </div>
+          </div>
+
+          {todayPayments.length === 0 ? (
+            renderEmptyState("Nenhuma cobrança para hoje")
+          ) : (
+            <div className="space-y-3">
+              {todayPayments.map(item => renderPaymentItem(item, false))}
+            </div>
+          )}
+        </TabsContent>
+
+        {/* TOMORROW Tab */}
+        <TabsContent value="amanha" className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold flex items-center gap-2">
+              Cobranças de Amanhã
+              <Badge variant="outline">
+                {format(addDays(new Date(), 1), "dd/MM/yyyy")}
+              </Badge>
+            </h2>
+            <div className="flex items-center gap-2 text-sm text-orange-600">
+              <AlertCircle className="w-4 h-4" />
+              Pagamentos aqui serão marcados como antecipados
+            </div>
+          </div>
+
+          {tomorrowPayments.length === 0 ? (
+            renderEmptyState("Nenhuma cobrança para amanhã")
+          ) : (
+            <div className="space-y-3">
+              {tomorrowPayments.map(item => renderPaymentItem(item, true))}
+            </div>
+          )}
+        </TabsContent>
+
+        {/* CUSTOM DATE Tab */}
+        <TabsContent value="outra" className="space-y-4">
+          {customDate ? (
+            <>
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold flex items-center gap-2">
+                  Cobranças de {format(customDate, "dd 'de' MMMM", { locale: ptBR })}
+                  <Badge variant="outline">
+                    {format(customDate, "dd/MM/yyyy")}
+                  </Badge>
+                </h2>
+                <div className="text-sm text-muted-foreground">
+                  {customDatePayments.length} registro{customDatePayments.length !== 1 ? 's' : ''}
+                </div>
+              </div>
+
+              {customDatePayments.length === 0 ? (
+                renderEmptyState("Nenhuma cobrança para esta data")
+              ) : (
+                <div className="space-y-3">
+                  {customDatePayments.map(item => {
+                    const isEarly = customDate > startOfDay(new Date());
+                    return renderPaymentItem(item, isEarly);
                   })}
                 </div>
-              </CardContent>
-            </Card>
+              )}
+            </>
+          ) : (
+            renderEmptyState("Selecione uma data no calendário acima")
           )}
+        </TabsContent>
+      </Tabs>
 
-          {/* Today's Total */}
-          <Card className="border-0 shadow-soft bg-gradient-primary text-white">
-            <CardContent className="p-6">
-              <p className="text-white/80 text-sm">Total de Hoje</p>
-              <p className="text-4xl font-display font-bold mt-2">
-                R$ {todayTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-              </p>
-              <p className="text-white/60 text-sm mt-2">
-                {todaySales.length} pagamento{todaySales.length !== 1 ? 's' : ''} registrado{todaySales.length !== 1 ? 's' : ''}
-              </p>
-            </CardContent>
-          </Card>
-
-          {/* Pending Summary */}
-          {totalPendingPayments > 0 && (
-            <Card className="border-0 shadow-soft bg-red-50 border-red-200">
-              <CardContent className="p-6">
-                <div className="flex items-center gap-2 text-red-700 mb-2">
-                  <AlertCircle className="w-5 h-5" />
-                  <p className="font-semibold">Pendências</p>
-                </div>
-                <p className="text-2xl font-bold text-red-600">
-                  {totalPendingPayments} serviço{totalPendingPayments !== 1 ? 's' : ''}
-                </p>
-                <p className="text-sm text-red-600/80 mt-1">
-                  aguardando pagamento
-                </p>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Recent Sales */}
-          <Card className="border-0 shadow-soft">
-            <CardHeader>
-              <CardTitle className="text-base">Pagamentos Recentes</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {sales.length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-4">
-                    Nenhum pagamento registrado ainda
-                  </p>
-                ) : (
-                  sales.slice(0, 5).map((sale, index) => {
-                    const client = getClient(sale.clientId);
-                    const isConfirmed = confirmedPayments.has(sale.id);
-                    const confirmInfo = confirmedPayments.get(sale.id);
-                    return (
-                      <motion.div
-                        key={sale.id}
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        transition={{ delay: index * 0.1 }}
-                        className={cn(
-                          "flex items-center justify-between p-3 rounded-lg border",
-                          isConfirmed
-                            ? "bg-green-50 border-green-200"
-                            : "bg-muted/50 border-transparent"
-                        )}
-                      >
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <p className="font-medium text-sm truncate max-w-[130px]">{sale.description}</p>
-                            {isConfirmed && (
-                              <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
-                            )}
-                          </div>
-                          <p className="text-xs text-muted-foreground">{client?.name}</p>
-                        </div>
-                        <div className="text-right flex-shrink-0">
-                          <p className={cn(
-                            "font-bold",
-                            isConfirmed ? "text-green-600" : "text-primary"
-                          )}>
-                            R$ {sale.amount.toFixed(2)}
-                          </p>
-                          <p className="text-xs text-muted-foreground capitalize">
-                            {sale.paymentMethod}
-                          </p>
-                        </div>
-                      </motion.div>
-                    );
-                  })
-                )}
+      {/* Summary Footer */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-4"
+      >
+        <Card className="border-0 shadow-soft bg-gradient-to-br from-primary/10 to-primary/5">
+          <CardContent className="p-6">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center">
+                <CheckCircle2 className="w-6 h-6 text-primary" />
               </div>
-            </CardContent>
-          </Card>
-        </motion.div>
-      </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Recebido Hoje</p>
+                <p className="text-2xl font-bold text-primary">
+                  R$ {todayPaidTotal.toFixed(2)}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-0 shadow-soft bg-gradient-to-br from-red-100 to-red-50">
+          <CardContent className="p-6">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-full bg-red-200 flex items-center justify-center">
+                <Clock className="w-6 h-6 text-red-600" />
+              </div>
+              <div>
+                <p className="text-sm text-red-600/80">Pendente Hoje</p>
+                <p className="text-2xl font-bold text-red-600">
+                  R$ {todayPendingTotal.toFixed(2)}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-0 shadow-soft bg-gradient-to-br from-orange-100 to-orange-50">
+          <CardContent className="p-6">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-full bg-orange-200 flex items-center justify-center">
+                <Calendar className="w-6 h-6 text-orange-600" />
+              </div>
+              <div>
+                <p className="text-sm text-orange-600/80">Agendado Amanhã</p>
+                <p className="text-2xl font-bold text-orange-600">
+                  {tomorrowPayments.length} serviço{tomorrowPayments.length !== 1 ? 's' : ''}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
 
       {/* Payment Confirmation Dialog */}
       <PaymentConfirmationDialog
         open={confirmDialogOpen}
         onOpenChange={setConfirmDialogOpen}
-        amount={pendingConfirmation?.amount || 0}
+        amount={pendingConfirmation?.item.price || 0}
         paymentMethod={selectedPayment}
-        clientName={pendingConfirmation?.clientName || ''}
-        description={pendingConfirmation?.description || ''}
+        clientName={pendingConfirmation?.item.clientName || ''}
+        description={pendingConfirmation ? `${pendingConfirmation.item.petName}: ${pendingConfirmation.item.description}` : ''}
         onConfirm={handlePaymentConfirmed}
-        onCancel={handleCancelConfirmation}
+        onCancel={() => {
+          setConfirmDialogOpen(false);
+          setPendingConfirmation(null);
+        }}
       />
     </div>
   );
