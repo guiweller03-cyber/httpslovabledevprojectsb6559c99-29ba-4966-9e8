@@ -32,66 +32,68 @@ import AdminActions from "./pages/admin/AdminActions";
 
 const queryClient = new QueryClient();
 
-const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <AuthProvider>
-          <Routes>
-            {/* Auth Route */}
-            <Route path="/auth" element={<Auth />} />
-            
-            {/* Admin Routes */}
-            <Route path="/admin" element={
-              <ProtectedRoute requireAdmin>
-                <AdminLayout><AdminDashboard /></AdminLayout>
-              </ProtectedRoute>
-            } />
-            <Route path="/admin/usuarios" element={
-              <ProtectedRoute requireAdmin>
-                <AdminLayout><AdminUsers /></AdminLayout>
-              </ProtectedRoute>
-            } />
-            <Route path="/admin/dados" element={
-              <ProtectedRoute requireAdmin>
-                <AdminLayout><AdminData /></AdminLayout>
-              </ProtectedRoute>
-            } />
-            <Route path="/admin/config" element={
-              <ProtectedRoute requireAdmin>
-                <AdminLayout><AdminConfig /></AdminLayout>
-              </ProtectedRoute>
-            } />
-            <Route path="/admin/acoes" element={
-              <ProtectedRoute requireAdmin>
-                <AdminLayout><AdminActions /></AdminLayout>
-              </ProtectedRoute>
-            } />
-            
-            {/* Main App Routes */}
-            <Route path="/" element={<MainLayout><Dashboard /></MainLayout>} />
-            <Route path="/banho-tosa" element={<MainLayout><BanhoTosa /></MainLayout>} />
-            <Route path="/hotel-creche" element={<MainLayout><HotelCreche /></MainLayout>} />
-            <Route path="/planos" element={<MainLayout><Planos /></MainLayout>} />
-            <Route path="/clientes" element={<MainLayout><Clientes /></MainLayout>} />
-            <Route path="/lembretes" element={<MainLayout><Lembretes /></MainLayout>} />
-            <Route path="/inativos" element={<MainLayout><Inativos /></MainLayout>} />
-            <Route path="/caixa" element={<MainLayout><FrenteCaixa /></MainLayout>} />
-            <Route path="/whatsapp" element={<MainLayout><WhatsAppPanel /></MainLayout>} />
-            <Route path="/importar" element={<MainLayout><Importar /></MainLayout>} />
-            <Route path="/tabela-valores" element={<MainLayout><TabelaValores /></MainLayout>} />
-            <Route path="/servicos-do-dia" element={<MainLayout><ServicosDoDia /></MainLayout>} />
-            <Route path="/rota-do-dia" element={<MainLayout><RotaDoDia /></MainLayout>} />
-            <Route path="/faturamento" element={<MainLayout><Faturamento /></MainLayout>} />
-            <Route path="/estoque" element={<MainLayout><Estoque /></MainLayout>} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </AuthProvider>
-      </BrowserRouter>
-    </TooltipProvider>
-  </QueryClientProvider>
-);
+function App() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <BrowserRouter>
+          <AuthProvider>
+            <Routes>
+              {/* Auth Route */}
+              <Route path="/auth" element={<Auth />} />
+              
+              {/* Admin Routes */}
+              <Route path="/admin" element={
+                <ProtectedRoute requireAdmin>
+                  <AdminLayout><AdminDashboard /></AdminLayout>
+                </ProtectedRoute>
+              } />
+              <Route path="/admin/usuarios" element={
+                <ProtectedRoute requireAdmin>
+                  <AdminLayout><AdminUsers /></AdminLayout>
+                </ProtectedRoute>
+              } />
+              <Route path="/admin/dados" element={
+                <ProtectedRoute requireAdmin>
+                  <AdminLayout><AdminData /></AdminLayout>
+                </ProtectedRoute>
+              } />
+              <Route path="/admin/config" element={
+                <ProtectedRoute requireAdmin>
+                  <AdminLayout><AdminConfig /></AdminLayout>
+                </ProtectedRoute>
+              } />
+              <Route path="/admin/acoes" element={
+                <ProtectedRoute requireAdmin>
+                  <AdminLayout><AdminActions /></AdminLayout>
+                </ProtectedRoute>
+              } />
+              
+              {/* Main App Routes */}
+              <Route path="/" element={<MainLayout><Dashboard /></MainLayout>} />
+              <Route path="/banho-tosa" element={<MainLayout><BanhoTosa /></MainLayout>} />
+              <Route path="/hotel-creche" element={<MainLayout><HotelCreche /></MainLayout>} />
+              <Route path="/planos" element={<MainLayout><Planos /></MainLayout>} />
+              <Route path="/clientes" element={<MainLayout><Clientes /></MainLayout>} />
+              <Route path="/lembretes" element={<MainLayout><Lembretes /></MainLayout>} />
+              <Route path="/inativos" element={<MainLayout><Inativos /></MainLayout>} />
+              <Route path="/caixa" element={<MainLayout><FrenteCaixa /></MainLayout>} />
+              <Route path="/whatsapp" element={<MainLayout><WhatsAppPanel /></MainLayout>} />
+              <Route path="/importar" element={<MainLayout><Importar /></MainLayout>} />
+              <Route path="/tabela-valores" element={<MainLayout><TabelaValores /></MainLayout>} />
+              <Route path="/servicos-do-dia" element={<MainLayout><ServicosDoDia /></MainLayout>} />
+              <Route path="/rota-do-dia" element={<MainLayout><RotaDoDia /></MainLayout>} />
+              <Route path="/faturamento" element={<MainLayout><Faturamento /></MainLayout>} />
+              <Route path="/estoque" element={<MainLayout><Estoque /></MainLayout>} />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </AuthProvider>
+        </BrowserRouter>
+      </TooltipProvider>
+    </QueryClientProvider>
+  );
+}
 
 export default App;
