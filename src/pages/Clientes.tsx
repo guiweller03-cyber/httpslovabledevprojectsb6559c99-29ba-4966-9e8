@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { Users, Plus, Search, Phone, Mail, Dog, Cat, Edit, Trash2, Scissors, Droplets, MapPin, Truck, Loader2, TrendingUp, PawPrint, AlertTriangle } from 'lucide-react';
+import { Users, Plus, Search, Phone, Mail, Dog, Cat, Edit, Trash2, Scissors, Droplets, MapPin, Truck, Loader2, TrendingUp, PawPrint, AlertTriangle, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -20,6 +20,8 @@ import { lookupCep, formatCep } from '@/lib/cepLookup';
 import { ClientBillingDialog } from '@/components/clients/ClientBillingDialog';
 import { ClientEditDialog } from '@/components/clients/ClientEditDialog';
 import { PetEditDialog } from '@/components/pets/PetEditDialog';
+import { CampaignFilters, CampaignType } from '@/components/campaigns/CampaignFilters';
+import { InactivitySettings } from '@/components/campaigns/InactivitySettings';
 
 const furTypeLabels: Record<FurType, string> = {
   curto: 'Pelo curto',
@@ -67,6 +69,8 @@ interface ClientDB {
   neighborhood: string | null;
   city: string | null;
   state: string | null;
+  tipo_campanha: string | null;
+  last_purchase: string | null;
 }
 
 interface PetDB {
@@ -111,6 +115,8 @@ const Clientes = () => {
   const [billingClient, setBillingClient] = useState<{ id: string; name: string } | null>(null);
   const [editingClient, setEditingClient] = useState<{ id: string; name: string } | null>(null);
   const [quickEditPet, setQuickEditPet] = useState<{ id: string; name: string } | null>(null);
+  const [selectedCampaignTypes, setSelectedCampaignTypes] = useState<CampaignType[]>([]);
+  const [showCampaignSettings, setShowCampaignSettings] = useState(false);
   // Client form state
   const [clientForm, setClientForm] = useState({
     name: '',
@@ -354,10 +360,34 @@ const Clientes = () => {
     };
   };
 
-  const filteredClients = clients.filter(client =>
-    client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    client.whatsapp.includes(searchTerm)
-  );
+  // Calculate campaign counts
+  const campaignCounts = useMemo(() => ({
+    primeira_compra: clients.filter(c => c.tipo_campanha === 'primeira_compra').length,
+    ativo: clients.filter(c => c.tipo_campanha === 'ativo').length,
+    inativo: clients.filter(c => c.tipo_campanha === 'inativo').length,
+  }), [clients]);
+
+  // Filter clients by search AND campaign type
+  const filteredClients = useMemo(() => {
+    let filtered = clients;
+    
+    // Filter by campaign type
+    if (selectedCampaignTypes.length > 0) {
+      filtered = filtered.filter(c => 
+        c.tipo_campanha && selectedCampaignTypes.includes(c.tipo_campanha as CampaignType)
+      );
+    }
+    
+    // Filter by search term
+    if (searchTerm) {
+      filtered = filtered.filter(client =>
+        client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        client.whatsapp.includes(searchTerm)
+      );
+    }
+    
+    return filtered;
+  }, [clients, selectedCampaignTypes, searchTerm]);
 
   const getClientPets = (clientId: string) => pets.filter(p => p.client_id === clientId);
 
@@ -668,20 +698,69 @@ const Clientes = () => {
             </p>
           </div>
           <div className="flex gap-2">
-            <Dialog open={isPetDialogOpen} onOpenChange={(open) => {
-              setIsPetDialogOpen(open);
-              if (!open) resetPetForm();
-            }}>
-              <DialogTrigger asChild>
-                <Button variant="outline">
-                  <Plus className="w-4 h-4 mr-2" />
-                  Novo Pet
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-                <DialogHeader>
-                  <DialogTitle>{editingPetId ? 'Editar Pet' : 'Cadastrar Novo Pet'}</DialogTitle>
-                </DialogHeader>
+            <Button variant="outline" size="sm" onClick={() => setShowCampaignSettings(!showCampaignSettings)}>
+              <Settings className="w-4 h-4 mr-2" />
+              Campanhas
+            </Button>
+          </div>
+        </div>
+        
+        {/* Campaign Settings */}
+        {showCampaignSettings && (
+          <div className="mt-4">
+            <InactivitySettings onSettingsChange={fetchClients} />
+          </div>
+        )}
+        
+        {/* Campaign Filters */}
+        <div className="mt-4">
+          <CampaignFilters
+            selectedTypes={selectedCampaignTypes}
+            onFilterChange={setSelectedCampaignTypes}
+            clientCounts={campaignCounts}
+            filteredClients={filteredClients.map(c => ({
+              id: c.id,
+              name: c.name,
+              whatsapp: c.whatsapp,
+              email: c.email,
+              tipo_campanha: c.tipo_campanha,
+            }))}
+          />
+        </div>
+      </motion.div>
+      
+      {/* Search and Actions */}
+      <div className="flex items-center justify-between mb-6">
+        <div className="relative w-64">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            placeholder="Buscar cliente..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setIsPetDialogOpen(true)}>
+            <Plus className="w-4 h-4 mr-2" />
+            Novo Pet
+          </Button>
+          <Button onClick={() => setIsClientDialogOpen(true)}>
+            <Plus className="w-4 h-4 mr-2" />
+            Novo Cliente
+          </Button>
+        </div>
+      </div>
+
+      {/* Pet Dialog */}
+      <Dialog open={isPetDialogOpen} onOpenChange={(open) => {
+        setIsPetDialogOpen(open);
+        if (!open) resetPetForm();
+      }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{editingPetId ? 'Editar Pet' : 'Cadastrar Novo Pet'}</DialogTitle>
+          </DialogHeader>
                 
                 <Tabs defaultValue="dados" className="mt-4">
                   <TabsList className="grid w-full grid-cols-4">
