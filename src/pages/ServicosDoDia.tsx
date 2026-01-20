@@ -293,6 +293,26 @@ export default function ServicosDoDia() {
     const isCompleted = (apt.kanban_status || 'espera') === 'concluido';
     const isPaid = apt.payment_status === 'pago' || apt.payment_status === 'isento';
     
+    // Get grooming type label
+    const getGroomingLabel = () => {
+      if (apt.service_type === 'banho') return 'Banho';
+      if (apt.grooming_type && groomingTypeLabels[apt.grooming_type]) {
+        return groomingTypeLabels[apt.grooming_type];
+      }
+      return 'Banho + Tosa';
+    };
+
+    // Get selected addons from optional_services
+    const getSelectedAddons = () => {
+      if (!apt.optional_services || apt.optional_services.length === 0) return [];
+      return apt.optional_services
+        .map(addonId => addons.find(a => a.id === addonId))
+        .filter(Boolean) as ServiceAddon[];
+    };
+
+    const selectedAddons = getSelectedAddons();
+    const hasTosa = apt.service_type === 'banho_tosa';
+    
     return (
       <motion.div
         initial={{ opacity: 0, y: 10 }}
@@ -342,15 +362,40 @@ export default function ServicosDoDia() {
               <User className="w-3 h-3" /> {client?.name || 'Cliente'}
             </p>
             
-            <div className="flex items-center justify-between">
-              <Badge variant="outline" className="text-xs">
-                {apt.service_type === 'banho' ? 'Banho' : 'Banho + Tosa'}
+            {/* Service type with grooming detail */}
+            <div className="flex items-center gap-1 mb-1">
+              <Badge 
+                variant="outline" 
+                className={cn(
+                  "text-xs",
+                  hasTosa && "border-purple-400 bg-purple-50 text-purple-700"
+                )}
+              >
+                {hasTosa && <Scissors className="w-3 h-3 mr-1" />}
+                {getGroomingLabel()}
               </Badge>
               <span className="text-xs text-muted-foreground flex items-center gap-1">
                 <Clock className="w-3 h-3" />
                 {format(parseISO(apt.start_datetime), 'HH:mm')}
               </span>
             </div>
+
+            {/* Addons list - only show if there are addons */}
+            {selectedAddons.length > 0 && (
+              <div className="mt-1.5 p-1.5 bg-muted/50 rounded text-xs">
+                <span className="text-muted-foreground font-medium">+ Adicionais:</span>
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {selectedAddons.map(addon => (
+                    <span 
+                      key={addon.id} 
+                      className="px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded text-[10px]"
+                    >
+                      {addon.name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
             
             {/* Logistics badge */}
             <div className="mt-2 flex items-center justify-between">
