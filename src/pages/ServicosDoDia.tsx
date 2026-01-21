@@ -124,6 +124,7 @@ export default function ServicosDoDia() {
         .gte('start_datetime', startOfDay)
         .lte('start_datetime', endOfDay)
         .neq('status', 'cancelado')
+        .not('payment_status', 'in', '("pago","pago_antecipado","isento")')
         .order('start_datetime', { ascending: true }),
       supabase.from('clients').select('*'),
       supabase.from('pets').select('*'),
@@ -288,11 +289,46 @@ export default function ServicosDoDia() {
     navigate(`/caixa?appointmentId=${apt.id}`);
   };
 
+  const handleFinalizarAtendimento = async (apt: Appointment) => {
+    // Mark as completed and navigate to payment
+    const { error } = await supabase
+      .from('bath_grooming_appointments')
+      .update({ 
+        kanban_status: 'concluido',
+        status: 'pronto'
+      })
+      .eq('id', apt.id);
+
+    if (error) {
+      toast({
+        title: "Erro",
+        description: "Não foi possível finalizar o atendimento.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Update local state
+    setAppointments(prev =>
+      prev.map(a =>
+        a.id === apt.id ? { ...a, kanban_status: 'concluido', status: 'pronto' } : a
+      )
+    );
+
+    toast({
+      title: "Atendimento finalizado",
+      description: "Redirecionando para o Frente de Caixa...",
+    });
+
+    // Navigate to FrenteCaixa
+    navigate(`/caixa?appointmentId=${apt.id}`);
+  };
+
   const KanbanCard = ({ apt }: { apt: Appointment }) => {
     const pet = getPet(apt.pet_id);
     const client = getClient(apt.client_id);
     const isCompleted = (apt.kanban_status || 'espera') === 'concluido';
-    const isPaid = apt.payment_status === 'pago' || apt.payment_status === 'isento';
+    const isPaid = apt.payment_status === 'pago' || apt.payment_status === 'pago_antecipado' || apt.payment_status === 'isento';
     
     // Get logistics based on rota_buscar and rota_entregar flags
     const getLogistics = () => {
@@ -334,16 +370,11 @@ export default function ServicosDoDia() {
         animate={{ opacity: 1, y: 0 }}
         draggable={!isCompleted}
         onDragStart={(e) => !isCompleted && handleDragStart(e as any, apt.id)}
-        onClick={() => isCompleted && !isPaid && handleGoToCaixa(apt)}
         className={cn(
           "p-3 rounded-lg border-2 bg-card shadow-sm hover:shadow-md transition-all",
           "border-l-4",
           apt.is_plan_usage ? "border-l-green-500" : "border-l-blue-500",
-          isCompleted && !isPaid 
-            ? "cursor-pointer hover:ring-2 hover:ring-primary hover:ring-offset-2" 
-            : !isCompleted 
-              ? "cursor-grab active:cursor-grabbing" 
-              : "opacity-60"
+          !isCompleted && "cursor-grab active:cursor-grabbing"
         )}
       >
         <div className="flex items-start gap-2">
@@ -352,9 +383,6 @@ export default function ServicosDoDia() {
           )}
           {isCompleted && !isPaid && (
             <DollarSign className="w-4 h-4 text-green-600 flex-shrink-0 mt-1" />
-          )}
-          {isCompleted && isPaid && (
-            <CheckCircle2 className="w-4 h-4 text-muted-foreground flex-shrink-0 mt-1" />
           )}
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between mb-1">
@@ -430,19 +458,35 @@ export default function ServicosDoDia() {
               )}
             </div>
             
-            {/* Payment actions */}
-            <div className="mt-2 flex items-center justify-end">
-              {isCompleted && !isPaid && (
-                <Badge className="bg-green-600 hover:bg-green-700 text-xs animate-pulse">
-                  💳 Cobrar
-                </Badge>
-              )}
-              {isCompleted && isPaid && (
-                <Badge variant="outline" className="text-xs text-muted-foreground">
-                  ✅ Pago
-                </Badge>
-              )}
-            </div>
+            {/* Action button - Finalizar Atendimento */}
+            {!isCompleted && (
+              <Button
+                size="sm"
+                className="w-full mt-3 bg-primary hover:bg-primary/90 gap-2"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleFinalizarAtendimento(apt);
+                }}
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                Ir para pagamento
+              </Button>
+            )}
+
+            {/* Payment status for completed items */}
+            {isCompleted && !isPaid && (
+              <Button
+                size="sm"
+                className="w-full mt-3 bg-green-600 hover:bg-green-700 gap-2 animate-pulse"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleGoToCaixa(apt);
+                }}
+              >
+                <DollarSign className="w-4 h-4" />
+                💳 Cobrar agora
+              </Button>
+            )}
           </div>
         </div>
       </motion.div>
