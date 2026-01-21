@@ -22,6 +22,7 @@ import ServicosDoDia from "./pages/ServicosDoDia";
 import RotaDoDia from "./pages/RotaDoDia";
 import Faturamento from "./pages/Faturamento";
 import Estoque from "./pages/Estoque";
+import Campanhas from "./pages/Campanhas";
 import NotFound from "./pages/NotFound";
 import Auth from "./pages/Auth";
 import AdminDashboard from "./pages/admin/AdminDashboard";
@@ -87,6 +88,7 @@ function App() {
               <Route path="/rota-do-dia" element={<MainLayout><RotaDoDia /></MainLayout>} />
               <Route path="/faturamento" element={<MainLayout><Faturamento /></MainLayout>} />
               <Route path="/estoque" element={<MainLayout><Estoque /></MainLayout>} />
+              <Route path="/campanhas" element={<MainLayout><Campanhas /></MainLayout>} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </AuthProvider>

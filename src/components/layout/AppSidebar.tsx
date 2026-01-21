@@ -16,7 +16,8 @@ import {
   ClipboardList,
   Car,
   TrendingUp,
-  Shield
+  Shield,
+  Megaphone
 } from 'lucide-react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
@@ -36,6 +37,7 @@ const baseNavItems = [
   { title: 'Clientes & Pets', url: '/clientes', icon: Users },
   { title: 'Lembretes', url: '/lembretes', icon: Bell },
   { title: 'Inativos', url: '/inativos', icon: UserX },
+  { title: 'Campanhas', url: '/campanhas', icon: Megaphone },
   { title: 'Frente de Caixa', url: '/caixa', icon: DollarSign },
   { title: 'Faturamento', url: '/faturamento', icon: TrendingUp },
   { title: 'WhatsApp', url: '/whatsapp', icon: MessageSquare },
