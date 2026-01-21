@@ -177,7 +177,17 @@ export function RevenueBreakdown() {
   };
 
   const calculateRevenueData = (items: SaleItemData[]): { categories: RevenueData; total: number } => {
-    const categories: RevenueData = JSON.parse(JSON.stringify(INITIAL_CATEGORIES));
+    // Create a proper deep copy preserving icon references
+    const categories: RevenueData = {
+      banho: { ...INITIAL_CATEGORIES.banho, total: 0, count: 0 },
+      tosa: { ...INITIAL_CATEGORIES.tosa, total: 0, count: 0 },
+      banho_tosa: { ...INITIAL_CATEGORIES.banho_tosa, total: 0, count: 0 },
+      adicionais: { ...INITIAL_CATEGORIES.adicionais, total: 0, count: 0 },
+      taxi_dog: { ...INITIAL_CATEGORIES.taxi_dog, total: 0, count: 0 },
+      hotel: { ...INITIAL_CATEGORIES.hotel, total: 0, count: 0 },
+      creche: { ...INITIAL_CATEGORIES.creche, total: 0, count: 0 },
+      produtos: { ...INITIAL_CATEGORIES.produtos, total: 0, count: 0 },
+    };
     let total = 0;
 
     items.forEach(item => {
