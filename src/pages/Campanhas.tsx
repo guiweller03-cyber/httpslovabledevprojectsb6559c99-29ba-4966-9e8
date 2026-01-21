@@ -1,6 +1,5 @@
-import { useState, useEffect, useMemo } from 'react';
-import { Megaphone, Search, Send, Users, Image, Video, FileText, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { useState, useMemo } from 'react';
+import { Megaphone, Send, Filter, Clock, UserCheck, UserX, ShoppingBag, Loader2, CheckCircle2, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -9,7 +8,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { toast } from '@/hooks/use-toast';
 import {
@@ -22,15 +20,50 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Image, Video, FileText } from 'lucide-react';
 
-interface Client {
-  id: string;
-  name: string;
-  whatsapp: string;
-  email: string | null;
+// Types
+type MediaType = 'text' | 'image' | 'video';
+type CriterioType = 'INATIVO' | 'ATIVO' | 'PRIMEIRA_COMPRA' | 'NUNCA_COMPROU';
+
+interface CriterioConfig {
+  id: CriterioType;
+  label: string;
+  description: string;
+  icon: React.ReactNode;
+  color: string;
 }
 
-type MediaType = 'text' | 'image' | 'video';
+const criteriosConfig: CriterioConfig[] = [
+  {
+    id: 'INATIVO',
+    label: 'Cliente Inativo',
+    description: 'Sem serviço concluído no caixa há X dias',
+    icon: <Clock className="w-4 h-4" />,
+    color: 'bg-orange-100 text-orange-800 border-orange-200',
+  },
+  {
+    id: 'ATIVO',
+    label: 'Cliente Ativo',
+    description: 'Com serviço recente no caixa',
+    icon: <UserCheck className="w-4 h-4" />,
+    color: 'bg-green-100 text-green-800 border-green-200',
+  },
+  {
+    id: 'PRIMEIRA_COMPRA',
+    label: 'Primeira Compra',
+    description: 'Realizou apenas uma compra',
+    icon: <ShoppingBag className="w-4 h-4" />,
+    color: 'bg-blue-100 text-blue-800 border-blue-200',
+  },
+  {
+    id: 'NUNCA_COMPROU',
+    label: 'Nunca Comprou',
+    description: 'Cadastrado mas sem compras no caixa',
+    icon: <UserX className="w-4 h-4" />,
+    color: 'bg-gray-100 text-gray-800 border-gray-200',
+  },
+];
 
 const mediaTypeLabels: Record<MediaType, { label: string; icon: React.ReactNode }> = {
   text: { label: 'Texto', icon: <FileText className="w-4 h-4" /> },
@@ -42,10 +75,9 @@ const mediaTypeLabels: Record<MediaType, { label: string; icon: React.ReactNode 
 const N8N_WEBHOOK_URL = 'https://SEU_N8N_URL/webhook/campanha';
 
 export default function Campanhas() {
-  const [clients, setClients] = useState<Client[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedClientIds, setSelectedClientIds] = useState<Set<string>>(new Set());
+  // Criteria selection state
+  const [selectedCriterios, setSelectedCriterios] = useState<Set<CriterioType>>(new Set());
+  const [diasInatividade, setDiasInatividade] = useState<number>(40);
   
   // Campaign form state
   const [campaignName, setCampaignName] = useState('');
@@ -57,98 +89,35 @@ export default function Campanhas() {
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [isSending, setIsSending] = useState(false);
 
-  // Fetch clients from database
-  useEffect(() => {
-    const fetchClients = async () => {
-      setIsLoading(true);
-      try {
-        const { data, error } = await supabase
-          .from('clients')
-          .select('id, name, whatsapp, email')
-          .order('name', { ascending: true });
-
-        if (error) throw error;
-        setClients(data || []);
-      } catch (error) {
-        console.error('Erro ao carregar clientes:', error);
-        toast({
-          title: 'Erro ao carregar clientes',
-          description: 'Não foi possível carregar a lista de clientes.',
-          variant: 'destructive',
-        });
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchClients();
-  }, []);
-
-  // Filter clients based on search
-  const filteredClients = useMemo(() => {
-    if (!searchTerm.trim()) return clients;
-    const term = searchTerm.toLowerCase();
-    return clients.filter(
-      c => c.name.toLowerCase().includes(term) || c.whatsapp.includes(term)
-    );
-  }, [clients, searchTerm]);
-
-  // Get selected clients
-  const selectedClients = useMemo(() => {
-    return clients.filter(c => selectedClientIds.has(c.id));
-  }, [clients, selectedClientIds]);
-
-  // Toggle client selection
-  const toggleClientSelection = (clientId: string) => {
-    setSelectedClientIds(prev => {
+  // Toggle criteria selection
+  const toggleCriterio = (criterio: CriterioType) => {
+    setSelectedCriterios(prev => {
       const newSet = new Set(prev);
-      if (newSet.has(clientId)) {
-        newSet.delete(clientId);
+      if (newSet.has(criterio)) {
+        newSet.delete(criterio);
       } else {
-        newSet.add(clientId);
+        newSet.add(criterio);
       }
       return newSet;
     });
-  };
-
-  // Select/Deselect all visible clients
-  const toggleSelectAll = () => {
-    if (filteredClients.every(c => selectedClientIds.has(c.id))) {
-      // Deselect all filtered
-      setSelectedClientIds(prev => {
-        const newSet = new Set(prev);
-        filteredClients.forEach(c => newSet.delete(c.id));
-        return newSet;
-      });
-    } else {
-      // Select all filtered
-      setSelectedClientIds(prev => {
-        const newSet = new Set(prev);
-        filteredClients.forEach(c => newSet.add(c.id));
-        return newSet;
-      });
-    }
   };
 
   // Validate form
   const isFormValid = useMemo(() => {
     if (!campaignName.trim()) return false;
     if (!message.trim()) return false;
-    if (selectedClientIds.size === 0) return false;
+    if (selectedCriterios.size === 0) return false;
     if (mediaType !== 'text' && !mediaUrl.trim()) return false;
+    if (selectedCriterios.has('INATIVO') && (!diasInatividade || diasInatividade < 1)) return false;
     return true;
-  }, [campaignName, message, selectedClientIds.size, mediaType, mediaUrl]);
+  }, [campaignName, message, selectedCriterios, mediaType, mediaUrl, diasInatividade]);
 
-  // Format phone number with country code
-  const formatPhoneWithDDI = (phone: string): string => {
-    // Remove non-numeric characters
-    const cleanPhone = phone.replace(/\D/g, '');
-    // Add Brazil country code if not present
-    if (!cleanPhone.startsWith('55')) {
-      return `55${cleanPhone}`;
-    }
-    return cleanPhone;
-  };
+  // Build criteria labels for display
+  const selectedCriteriosLabels = useMemo(() => {
+    return criteriosConfig
+      .filter(c => selectedCriterios.has(c.id))
+      .map(c => c.label);
+  }, [selectedCriterios]);
 
   // Send campaign
   const handleSendCampaign = async () => {
@@ -158,13 +127,14 @@ export default function Campanhas() {
 
     try {
       const payload = {
+        campanha: campaignName,
         mensagem: message,
         mediaType: mediaType,
         mediaUrl: mediaType !== 'text' ? mediaUrl : '',
-        clientes: selectedClients.map(c => ({
-          nome: c.name,
-          telefone: formatPhoneWithDDI(c.whatsapp),
-        })),
+        filtros: {
+          criterios: Array.from(selectedCriterios),
+          diasInatividade: selectedCriterios.has('INATIVO') ? diasInatividade : null,
+        },
       };
 
       console.log('[Campanha Webhook] Enviando dados:', payload);
@@ -185,7 +155,7 @@ export default function Campanhas() {
 
       toast({
         title: '✅ Campanha enviada com sucesso!',
-        description: `Campanha "${campaignName}" enviada para ${selectedClients.length} cliente(s).`,
+        description: `Campanha "${campaignName}" enviada para processamento no n8n.`,
       });
 
       // Reset form
@@ -193,7 +163,8 @@ export default function Campanhas() {
       setMessage('');
       setMediaType('text');
       setMediaUrl('');
-      setSelectedClientIds(new Set());
+      setSelectedCriterios(new Set());
+      setDiasInatividade(40);
       setShowConfirmDialog(false);
 
     } catch (error) {
@@ -217,87 +188,117 @@ export default function Campanhas() {
         </div>
         <div>
           <h1 className="text-2xl font-display font-bold text-foreground">Campanhas</h1>
-          <p className="text-muted-foreground">Envie mensagens em massa para seus clientes via WhatsApp</p>
+          <p className="text-muted-foreground">Envie campanhas segmentadas para seus clientes via WhatsApp</p>
         </div>
       </div>
 
+      {/* Info Card */}
+      <Card className="bg-blue-50 border-blue-200">
+        <CardContent className="py-4">
+          <div className="flex gap-3">
+            <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+            <div className="text-sm text-blue-800">
+              <p className="font-medium mb-1">Como funciona a segmentação</p>
+              <p className="text-blue-700">
+                A inatividade é calculada com base nos serviços <strong>concluídos e pagos</strong> no Frente de Caixa.
+                Agendamentos sem pagamento confirmado não são considerados. O n8n é responsável por identificar 
+                os clientes que atendem aos critérios selecionados e enviar as mensagens.
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Client Selection Panel */}
+        {/* Criteria Selection Panel */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Users className="w-5 h-5" />
-              Selecionar Clientes
+              <Filter className="w-5 h-5" />
+              Segmentação de Público
             </CardTitle>
             <CardDescription>
-              Escolha os clientes que receberão a campanha
+              Selecione os critérios para filtrar os clientes da campanha
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* Search */}
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
-                placeholder="Buscar por nome ou telefone..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
-            </div>
+            {/* Criteria List */}
+            <div className="space-y-3">
+              {criteriosConfig.map((criterio) => (
+                <div key={criterio.id}>
+                  <div
+                    className={`flex items-start gap-3 p-4 rounded-lg border cursor-pointer transition-all ${
+                      selectedCriterios.has(criterio.id)
+                        ? `${criterio.color} border-2`
+                        : 'bg-background border-border hover:bg-muted/50'
+                    }`}
+                    onClick={() => toggleCriterio(criterio.id)}
+                  >
+                    <Checkbox
+                      checked={selectedCriterios.has(criterio.id)}
+                      onCheckedChange={() => toggleCriterio(criterio.id)}
+                      className="mt-0.5"
+                    />
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        {criterio.icon}
+                        <span className="font-medium text-sm">{criterio.label}</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {criterio.description}
+                      </p>
+                    </div>
+                  </div>
 
-            {/* Select All */}
-            <div className="flex items-center justify-between">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={toggleSelectAll}
-              >
-                {filteredClients.every(c => selectedClientIds.has(c.id)) && filteredClients.length > 0
-                  ? 'Desmarcar Todos'
-                  : 'Selecionar Todos'}
-              </Button>
-              <Badge variant="secondary">
-                {selectedClientIds.size} selecionado(s)
-              </Badge>
+                  {/* Inactivity days input - only shown when INATIVO is selected */}
+                  {criterio.id === 'INATIVO' && selectedCriterios.has('INATIVO') && (
+                    <div className="mt-3 ml-8 p-3 bg-orange-50 rounded-lg border border-orange-200">
+                      <Label htmlFor="diasInatividade" className="text-sm font-medium text-orange-800">
+                        Dias de inatividade
+                      </Label>
+                      <div className="flex items-center gap-2 mt-2">
+                        <Input
+                          id="diasInatividade"
+                          type="number"
+                          min={1}
+                          value={diasInatividade}
+                          onChange={(e) => setDiasInatividade(parseInt(e.target.value) || 40)}
+                          className="w-24 bg-white"
+                        />
+                        <span className="text-sm text-orange-700">dias sem serviço no caixa</span>
+                      </div>
+                      <p className="text-xs text-orange-600 mt-2">
+                        Clientes que não finalizaram nenhum serviço há {diasInatividade} dias ou mais
+                      </p>
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
 
             <Separator />
 
-            {/* Client List */}
-            <ScrollArea className="h-[400px] pr-4">
-              {isLoading ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-                </div>
-              ) : filteredClients.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  Nenhum cliente encontrado
-                </div>
+            {/* Selected Summary */}
+            <div className="bg-muted/50 rounded-lg p-4">
+              <h4 className="font-medium text-sm mb-2">Critérios selecionados</h4>
+              {selectedCriterios.size === 0 ? (
+                <p className="text-sm text-muted-foreground">Nenhum critério selecionado</p>
               ) : (
-                <div className="space-y-2">
-                  {filteredClients.map((client) => (
-                    <div
-                      key={client.id}
-                      className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
-                        selectedClientIds.has(client.id)
-                          ? 'bg-primary/10 border-primary'
-                          : 'bg-background border-border hover:bg-muted/50'
-                      }`}
-                      onClick={() => toggleClientSelection(client.id)}
-                    >
-                      <Checkbox
-                        checked={selectedClientIds.has(client.id)}
-                        onCheckedChange={() => toggleClientSelection(client.id)}
-                      />
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-sm truncate">{client.name}</p>
-                        <p className="text-xs text-muted-foreground">{client.whatsapp}</p>
-                      </div>
-                    </div>
-                  ))}
+                <div className="flex flex-wrap gap-2">
+                  {criteriosConfig
+                    .filter(c => selectedCriterios.has(c.id))
+                    .map(c => (
+                      <Badge key={c.id} className={c.color}>
+                        {c.icon}
+                        <span className="ml-1">{c.label}</span>
+                        {c.id === 'INATIVO' && (
+                          <span className="ml-1">({diasInatividade}d)</span>
+                        )}
+                      </Badge>
+                    ))}
                 </div>
               )}
-            </ScrollArea>
+            </div>
           </CardContent>
         </Card>
 
@@ -318,7 +319,7 @@ export default function Campanhas() {
               <Label htmlFor="campaignName">Nome da Campanha *</Label>
               <Input
                 id="campaignName"
-                placeholder="Ex: Promoção de Verão"
+                placeholder="Ex: Reativação de Clientes Inativos"
                 value={campaignName}
                 onChange={(e) => setCampaignName(e.target.value)}
               />
@@ -389,12 +390,14 @@ export default function Campanhas() {
                   {campaignName || '-'}
                 </p>
                 <p>
-                  <span className="text-muted-foreground">Tipo:</span>{' '}
+                  <span className="text-muted-foreground">Tipo de mídia:</span>{' '}
                   {mediaTypeLabels[mediaType].label}
                 </p>
                 <p>
-                  <span className="text-muted-foreground">Destinatários:</span>{' '}
-                  <Badge variant="secondary">{selectedClientIds.size}</Badge>
+                  <span className="text-muted-foreground">Público:</span>{' '}
+                  {selectedCriteriosLabels.length > 0 
+                    ? selectedCriteriosLabels.join(', ')
+                    : 'Nenhum critério selecionado'}
                 </p>
               </div>
             </div>
@@ -412,7 +415,7 @@ export default function Campanhas() {
 
             {!isFormValid && (
               <p className="text-xs text-center text-muted-foreground">
-                Preencha todos os campos obrigatórios e selecione ao menos um cliente
+                Preencha todos os campos obrigatórios e selecione ao menos um critério
               </p>
             )}
           </CardContent>
@@ -429,11 +432,24 @@ export default function Campanhas() {
             </AlertDialogTitle>
             <AlertDialogDescription className="space-y-3">
               <p>
-                Você está prestes a enviar a campanha <strong>"{campaignName}"</strong> para{' '}
-                <strong>{selectedClientIds.size} cliente(s)</strong>.
+                Você está prestes a enviar a campanha <strong>"{campaignName}"</strong>.
               </p>
               
               <div className="bg-muted p-3 rounded-lg text-sm space-y-2">
+                <p><strong>Público-alvo:</strong></p>
+                <div className="flex flex-wrap gap-2">
+                  {criteriosConfig
+                    .filter(c => selectedCriterios.has(c.id))
+                    .map(c => (
+                      <Badge key={c.id} variant="secondary">
+                        {c.label}
+                        {c.id === 'INATIVO' && ` (${diasInatividade} dias)`}
+                      </Badge>
+                    ))}
+                </div>
+                
+                <Separator className="my-2" />
+                
                 <p><strong>Tipo:</strong> {mediaTypeLabels[mediaType].label}</p>
                 {mediaType !== 'text' && mediaUrl && (
                   <p><strong>Mídia:</strong> {mediaUrl}</p>
@@ -443,8 +459,8 @@ export default function Campanhas() {
               </div>
 
               <p className="text-xs text-muted-foreground">
-                Os dados serão enviados para o webhook do n8n. O envio real das mensagens
-                será processado pelo n8n via Uazapi.
+                Os filtros serão enviados para o webhook do n8n, que identificará os clientes 
+                correspondentes e processará o envio das mensagens via Uazapi.
               </p>
             </AlertDialogDescription>
           </AlertDialogHeader>
