@@ -40,7 +40,8 @@ export function useCampaignClients() {
 
   const clientCounts = useMemo(() => {
     return {
-      primeira_compra: clients.filter(c => c.tipo_campanha === 'primeira_compra').length,
+      sem_compra: clients.filter(c => c.tipo_campanha === 'sem_compra' || !c.tipo_campanha).length,
+      novo: clients.filter(c => c.tipo_campanha === 'novo').length,
       ativo: clients.filter(c => c.tipo_campanha === 'ativo').length,
       inativo: clients.filter(c => c.tipo_campanha === 'inativo').length,
     };
@@ -50,7 +51,12 @@ export function useCampaignClients() {
     if (selectedTypes.length === 0) {
       return clients;
     }
-    return clients.filter(c => c.tipo_campanha && selectedTypes.includes(c.tipo_campanha as CampaignType));
+    return clients.filter(c => {
+      if (selectedTypes.includes('sem_compra') && (!c.tipo_campanha || c.tipo_campanha === 'sem_compra')) {
+        return true;
+      }
+      return c.tipo_campanha && selectedTypes.includes(c.tipo_campanha as CampaignType);
+    });
   }, [clients, selectedTypes]);
 
   return {

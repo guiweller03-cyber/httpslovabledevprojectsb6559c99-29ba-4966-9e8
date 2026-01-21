@@ -1,15 +1,16 @@
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { UserCheck, UserX, ShoppingBag } from 'lucide-react';
+import { UserCheck, UserX, UserPlus, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-export type CampaignType = 'primeira_compra' | 'ativo' | 'inativo';
+export type CampaignType = 'sem_compra' | 'novo' | 'ativo' | 'inativo';
 
 interface CampaignFiltersProps {
   selectedTypes: CampaignType[];
   onFilterChange: (types: CampaignType[]) => void;
   clientCounts: {
-    primeira_compra: number;
+    sem_compra: number;
+    novo: number;
     ativo: number;
     inativo: number;
   };
@@ -17,9 +18,15 @@ interface CampaignFiltersProps {
 
 const filterConfig: { id: CampaignType; label: string; icon: React.ReactNode; colorClass: string }[] = [
   {
-    id: 'primeira_compra',
-    label: 'Sem Compra',
-    icon: <ShoppingBag className="w-3.5 h-3.5" />,
+    id: 'sem_compra',
+    label: 'Nunca Comprou',
+    icon: <Clock className="w-3.5 h-3.5" />,
+    colorClass: 'bg-gray-100 text-gray-800 border-gray-300 hover:bg-gray-200',
+  },
+  {
+    id: 'novo',
+    label: 'Novo',
+    icon: <UserPlus className="w-3.5 h-3.5" />,
     colorClass: 'bg-blue-100 text-blue-800 border-blue-300 hover:bg-blue-200',
   },
   {

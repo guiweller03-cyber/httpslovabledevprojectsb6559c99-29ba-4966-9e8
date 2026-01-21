@@ -217,7 +217,8 @@ const Clientes = () => {
 
   // Calculate campaign counts
   const campaignCounts = useMemo(() => ({
-    primeira_compra: clients.filter(c => c.tipo_campanha === 'primeira_compra').length,
+    sem_compra: clients.filter(c => c.tipo_campanha === 'sem_compra' || !c.tipo_campanha).length,
+    novo: clients.filter(c => c.tipo_campanha === 'novo').length,
     ativo: clients.filter(c => c.tipo_campanha === 'ativo').length,
     inativo: clients.filter(c => c.tipo_campanha === 'inativo').length,
   }), [clients]);
@@ -227,9 +228,12 @@ const Clientes = () => {
     let filtered = clients;
     
     if (selectedCampaignTypes.length > 0) {
-      filtered = filtered.filter(c => 
-        c.tipo_campanha && selectedCampaignTypes.includes(c.tipo_campanha as CampaignType)
-      );
+      filtered = filtered.filter(c => {
+        if (selectedCampaignTypes.includes('sem_compra') && (!c.tipo_campanha || c.tipo_campanha === 'sem_compra')) {
+          return true;
+        }
+        return c.tipo_campanha && selectedCampaignTypes.includes(c.tipo_campanha as CampaignType);
+      });
     }
     
     if (searchTerm) {
@@ -423,7 +427,7 @@ const Clientes = () => {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
         <Card className="border-0 shadow-soft">
           <CardContent className="p-4 flex items-center gap-4">
             <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center">
@@ -431,7 +435,18 @@ const Clientes = () => {
             </div>
             <div>
               <p className="text-2xl font-bold">{clients.length}</p>
-              <p className="text-sm text-muted-foreground">Total Clientes</p>
+              <p className="text-sm text-muted-foreground">Total</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border-0 shadow-soft">
+          <CardContent className="p-4 flex items-center gap-4">
+            <div className="w-12 h-12 bg-muted rounded-xl flex items-center justify-center">
+              <Users className="w-6 h-6 text-muted-foreground" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold">{campaignCounts.sem_compra}</p>
+              <p className="text-sm text-muted-foreground">Sem Compra</p>
             </div>
           </CardContent>
         </Card>
@@ -441,8 +456,8 @@ const Clientes = () => {
               <Users className="w-6 h-6 text-blue-600" />
             </div>
             <div>
-              <p className="text-2xl font-bold">{campaignCounts.primeira_compra}</p>
-              <p className="text-sm text-muted-foreground">Primeira Compra</p>
+              <p className="text-2xl font-bold">{campaignCounts.novo}</p>
+              <p className="text-sm text-muted-foreground">Novos</p>
             </div>
           </CardContent>
         </Card>
