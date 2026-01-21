@@ -1,15 +1,13 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Users, Plus, Search, Phone, Mail, Dog, Cat, Edit, Trash2, Scissors, Droplets, MapPin, Truck, Loader2, TrendingUp, PawPrint, AlertTriangle, Settings } from 'lucide-react';
+import { Users, Plus, Search, Phone, Mail, Dog, Cat, Edit, TrendingUp, PawPrint } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { Switch } from '@/components/ui/switch';
 import { toast } from '@/hooks/use-toast';
 import { mockPets, getBreedsBySpecies } from '@/data/mockData';
 import { Pet, FurType, Species, PetSize, PreferredService, GroomingType, BreedInfo } from '@/types';
@@ -20,8 +18,6 @@ import { lookupCep, formatCep } from '@/lib/cepLookup';
 import { ClientBillingDialog } from '@/components/clients/ClientBillingDialog';
 import { ClientEditDialog } from '@/components/clients/ClientEditDialog';
 import { PetEditDialog } from '@/components/pets/PetEditDialog';
-import { CampaignFilters, CampaignType } from '@/components/campaigns/CampaignFilters';
-import { InactivitySettings } from '@/components/campaigns/InactivitySettings';
 
 const furTypeLabels: Record<FurType, string> = {
   curto: 'Pelo curto',
@@ -108,9 +104,6 @@ const Clientes = () => {
   const [billingClient, setBillingClient] = useState<{ id: string; name: string } | null>(null);
   const [editingClient, setEditingClient] = useState<{ id: string; name: string } | null>(null);
   const [quickEditPet, setQuickEditPet] = useState<{ id: string; name: string } | null>(null);
-  const [selectedCampaignTypes, setSelectedCampaignTypes] = useState<CampaignType[]>([]);
-  const [showCampaignSettings, setShowCampaignSettings] = useState(false);
-
   const [clientForm, setClientForm] = useState({
     name: '',
     whatsapp: '',
@@ -215,36 +208,12 @@ const Clientes = () => {
     }
   }, [petForm.breed, availableBreeds]);
 
-  // Calculate campaign counts
-  const campaignCounts = useMemo(() => ({
-    sem_compra: clients.filter(c => c.tipo_campanha === 'sem_compra' || !c.tipo_campanha).length,
-    novo: clients.filter(c => c.tipo_campanha === 'novo').length,
-    ativo: clients.filter(c => c.tipo_campanha === 'ativo').length,
-    inativo: clients.filter(c => c.tipo_campanha === 'inativo').length,
-  }), [clients]);
-
-  // Filter clients by search AND campaign type
-  const filteredClients = useMemo(() => {
-    let filtered = clients;
-    
-    if (selectedCampaignTypes.length > 0) {
-      filtered = filtered.filter(c => {
-        if (selectedCampaignTypes.includes('sem_compra') && (!c.tipo_campanha || c.tipo_campanha === 'sem_compra')) {
-          return true;
-        }
-        return c.tipo_campanha && selectedCampaignTypes.includes(c.tipo_campanha as CampaignType);
-      });
-    }
-    
-    if (searchTerm) {
-      filtered = filtered.filter(client =>
-        client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        client.whatsapp.includes(searchTerm)
-      );
-    }
-    
-    return filtered;
-  }, [clients, selectedCampaignTypes, searchTerm]);
+  // Filter clients by search only
+  const filteredClients = clients.filter(client =>
+    !searchTerm ||
+    client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    client.whatsapp.includes(searchTerm)
+  );
 
   const getClientPets = (clientId: string) => pets.filter(p => p.client_id === clientId);
 
@@ -381,10 +350,6 @@ const Clientes = () => {
             <p className="text-muted-foreground mt-1">Gerencie sua base de clientes e seus pets</p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => setShowCampaignSettings(!showCampaignSettings)}>
-              <Settings className="w-4 h-4 mr-2" />
-              Campanhas
-            </Button>
             <Button variant="outline" onClick={() => setIsPetDialogOpen(true)}>
               <Plus className="w-4 h-4 mr-2" />
               Novo Pet
@@ -396,22 +361,6 @@ const Clientes = () => {
           </div>
         </div>
       </motion.div>
-
-      {/* Campaign Settings */}
-      {showCampaignSettings && (
-        <div className="mb-6">
-          <InactivitySettings onSettingsChange={fetchClients} />
-        </div>
-      )}
-
-      {/* Campaign Filters */}
-      <div className="mb-6">
-        <CampaignFilters
-          selectedTypes={selectedCampaignTypes}
-          onFilterChange={setSelectedCampaignTypes}
-          clientCounts={campaignCounts}
-        />
-      </div>
 
       {/* Search */}
       <div className="mb-6">
@@ -426,8 +375,8 @@ const Clientes = () => {
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
+      {/* Stats - Only basic counts */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
         <Card className="border-0 shadow-soft">
           <CardContent className="p-4 flex items-center gap-4">
             <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center">
@@ -435,51 +384,18 @@ const Clientes = () => {
             </div>
             <div>
               <p className="text-2xl font-bold">{clients.length}</p>
-              <p className="text-sm text-muted-foreground">Total</p>
+              <p className="text-sm text-muted-foreground">Total de Clientes</p>
             </div>
           </CardContent>
         </Card>
         <Card className="border-0 shadow-soft">
           <CardContent className="p-4 flex items-center gap-4">
-            <div className="w-12 h-12 bg-muted rounded-xl flex items-center justify-center">
-              <Users className="w-6 h-6 text-muted-foreground" />
+            <div className="w-12 h-12 bg-secondary/50 rounded-xl flex items-center justify-center">
+              <PawPrint className="w-6 h-6 text-secondary-foreground" />
             </div>
             <div>
-              <p className="text-2xl font-bold">{campaignCounts.sem_compra}</p>
-              <p className="text-sm text-muted-foreground">Sem Compra</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-0 shadow-soft">
-          <CardContent className="p-4 flex items-center gap-4">
-            <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
-              <Users className="w-6 h-6 text-blue-600" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold">{campaignCounts.novo}</p>
-              <p className="text-sm text-muted-foreground">Novos</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-0 shadow-soft">
-          <CardContent className="p-4 flex items-center gap-4">
-            <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
-              <Users className="w-6 h-6 text-green-600" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold">{campaignCounts.ativo}</p>
-              <p className="text-sm text-muted-foreground">Ativos</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-0 shadow-soft">
-          <CardContent className="p-4 flex items-center gap-4">
-            <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center">
-              <Users className="w-6 h-6 text-orange-600" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold">{campaignCounts.inativo}</p>
-              <p className="text-sm text-muted-foreground">Inativos</p>
+              <p className="text-2xl font-bold">{pets.length}</p>
+              <p className="text-sm text-muted-foreground">Total de Pets</p>
             </div>
           </CardContent>
         </Card>
@@ -508,17 +424,6 @@ const Clientes = () => {
                       <div className="flex-1">
                         <div className="flex items-center gap-3 mb-2">
                           <h3 className="font-semibold text-foreground">{client.name}</h3>
-                          {client.tipo_campanha && client.tipo_campanha !== 'primeira_compra' && (
-                            <Badge 
-                              variant="outline" 
-                              className={
-                                client.tipo_campanha === 'ativo' ? 'bg-green-100 text-green-700 border-green-200' :
-                                'bg-orange-100 text-orange-700 border-orange-200'
-                              }
-                            >
-                              {client.tipo_campanha === 'ativo' ? 'Ativo' : 'Inativo'}
-                            </Badge>
-                          )}
                         </div>
                         <div className="flex items-center gap-4 text-sm text-muted-foreground mb-3">
                           <span className="flex items-center gap-1">
