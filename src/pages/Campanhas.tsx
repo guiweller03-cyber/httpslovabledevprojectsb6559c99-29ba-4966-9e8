@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react';
-import { Megaphone, Send, Filter, Clock, UserCheck, UserX, ShoppingBag, Loader2, CheckCircle2, Info } from 'lucide-react';
+import { useState, useMemo, useEffect } from 'react';
+import { Megaphone, Send, Filter, Clock, UserCheck, UserX, ShoppingBag, Loader2, Info, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -21,10 +21,23 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Image, Video, FileText } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { CampaignClientList } from '@/components/campaigns/CampaignClientList';
+import { differenceInDays, parseISO } from 'date-fns';
 
 // Types
 type MediaType = 'text' | 'image' | 'video';
 type CriterioType = 'INATIVO' | 'ATIVO' | 'PRIMEIRA_COMPRA' | 'NUNCA_COMPROU';
+
+interface ClientWithCampaign {
+  id: string;
+  name: string;
+  whatsapp: string;
+  email: string | null;
+  tipo_campanha: string | null;
+  last_purchase: string | null;
+  created_at: string | null;
+}
 
 interface CriterioConfig {
   id: CriterioType;
@@ -75,6 +88,10 @@ const mediaTypeLabels: Record<MediaType, { label: string; icon: React.ReactNode 
 const N8N_WEBHOOK_URL = 'https://SEU_N8N_URL/webhook/campanha';
 
 export default function Campanhas() {
+  // Clients data
+  const [allClients, setAllClients] = useState<ClientWithCampaign[]>([]);
+  const [isLoadingClients, setIsLoadingClients] = useState(true);
+  
   // Criteria selection state
   const [selectedCriterios, setSelectedCriterios] = useState<Set<CriterioType>>(new Set());
   const [diasInatividade, setDiasInatividade] = useState<number>(40);
@@ -89,6 +106,74 @@ export default function Campanhas() {
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [isSending, setIsSending] = useState(false);
 
+  // Fetch clients on mount
+  useEffect(() => {
+    fetchClients();
+  }, []);
+
+  const fetchClients = async () => {
+    setIsLoadingClients(true);
+    try {
+      const { data, error } = await supabase
+        .from('clients')
+        .select('id, name, whatsapp, email, tipo_campanha, last_purchase, created_at')
+        .order('name', { ascending: true });
+
+      if (error) throw error;
+      setAllClients((data || []) as ClientWithCampaign[]);
+    } catch (error) {
+      console.error('Erro ao carregar clientes:', error);
+      toast({
+        title: 'Erro ao carregar clientes',
+        description: 'Não foi possível buscar a lista de clientes.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoadingClients(false);
+    }
+  };
+
+  // Filter clients based on selected criteria
+  const filteredClients = useMemo(() => {
+    if (selectedCriterios.size === 0) return [];
+
+    return allClients.filter((client) => {
+      const daysInactive = client.last_purchase 
+        ? differenceInDays(new Date(), parseISO(client.last_purchase))
+        : null;
+
+      for (const criterio of selectedCriterios) {
+        switch (criterio) {
+          case 'INATIVO':
+            // Inactive: has last_purchase but it's >= diasInatividade days ago
+            if (daysInactive !== null && daysInactive >= diasInatividade) {
+              return true;
+            }
+            break;
+          case 'ATIVO':
+            // Active: has recent purchase (less than diasInatividade)
+            if (daysInactive !== null && daysInactive < diasInatividade) {
+              return true;
+            }
+            break;
+          case 'PRIMEIRA_COMPRA':
+            // First purchase: has tipo_campanha as primeira_compra or has exactly one purchase
+            if (client.tipo_campanha === 'primeira_compra') {
+              return true;
+            }
+            break;
+          case 'NUNCA_COMPROU':
+            // Never bought: no last_purchase date
+            if (!client.last_purchase) {
+              return true;
+            }
+            break;
+        }
+      }
+      return false;
+    });
+  }, [allClients, selectedCriterios, diasInatividade]);
+
   // Toggle criteria selection
   const toggleCriterio = (criterio: CriterioType) => {
     setSelectedCriterios(prev => {
@@ -102,15 +187,16 @@ export default function Campanhas() {
     });
   };
 
-  // Validate form
+  // Validate form - now requires clients to be visible
   const isFormValid = useMemo(() => {
     if (!campaignName.trim()) return false;
     if (!message.trim()) return false;
     if (selectedCriterios.size === 0) return false;
+    if (filteredClients.length === 0) return false;
     if (mediaType !== 'text' && !mediaUrl.trim()) return false;
     if (selectedCriterios.has('INATIVO') && (!diasInatividade || diasInatividade < 1)) return false;
     return true;
-  }, [campaignName, message, selectedCriterios, mediaType, mediaUrl, diasInatividade]);
+  }, [campaignName, message, selectedCriterios, mediaType, mediaUrl, diasInatividade, filteredClients.length]);
 
   // Build criteria labels for display
   const selectedCriteriosLabels = useMemo(() => {
@@ -135,6 +221,13 @@ export default function Campanhas() {
           criterios: Array.from(selectedCriterios),
           diasInatividade: selectedCriterios.has('INATIVO') ? diasInatividade : null,
         },
+        clientes: filteredClients.map(c => ({
+          id: c.id,
+          nome: c.name,
+          telefone: c.whatsapp,
+          email: c.email,
+        })),
+        totalClientes: filteredClients.length,
       };
 
       console.log('[Campanha Webhook] Enviando dados:', payload);
@@ -155,7 +248,7 @@ export default function Campanhas() {
 
       toast({
         title: '✅ Campanha enviada com sucesso!',
-        description: `Campanha "${campaignName}" enviada para processamento no n8n.`,
+        description: `Campanha "${campaignName}" enviada para ${filteredClients.length} cliente(s).`,
       });
 
       // Reset form
@@ -201,15 +294,14 @@ export default function Campanhas() {
               <p className="font-medium mb-1">Como funciona a segmentação</p>
               <p className="text-blue-700">
                 A inatividade é calculada com base nos serviços <strong>concluídos e pagos</strong> no Frente de Caixa.
-                Agendamentos sem pagamento confirmado não são considerados. O n8n é responsável por identificar 
-                os clientes que atendem aos critérios selecionados e enviar as mensagens.
+                Selecione os critérios para visualizar os clientes que atendem ao filtro antes de enviar a campanha.
               </p>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         {/* Criteria Selection Panel */}
         <Card>
           <CardHeader>
@@ -265,11 +357,8 @@ export default function Campanhas() {
                           onChange={(e) => setDiasInatividade(parseInt(e.target.value) || 40)}
                           className="w-24 bg-white"
                         />
-                        <span className="text-sm text-orange-700">dias sem serviço no caixa</span>
+                        <span className="text-sm text-orange-700">dias sem serviço</span>
                       </div>
-                      <p className="text-xs text-orange-600 mt-2">
-                        Clientes que não finalizaram nenhum serviço há {diasInatividade} dias ou mais
-                      </p>
                     </div>
                   )}
                 </div>
@@ -302,6 +391,13 @@ export default function Campanhas() {
           </CardContent>
         </Card>
 
+        {/* Client List Panel */}
+        <CampaignClientList 
+          clients={filteredClients} 
+          isLoading={isLoadingClients}
+          diasInatividade={diasInatividade}
+        />
+
         {/* Campaign Form Panel */}
         <Card>
           <CardHeader>
@@ -333,7 +429,7 @@ export default function Campanhas() {
                 placeholder="Digite a mensagem que será enviada aos clientes..."
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
-                className="min-h-[150px] resize-none"
+                className="min-h-[120px] resize-none"
               />
               <p className="text-xs text-muted-foreground">
                 {message.length} caracteres
@@ -373,9 +469,6 @@ export default function Campanhas() {
                   value={mediaUrl}
                   onChange={(e) => setMediaUrl(e.target.value)}
                 />
-                <p className="text-xs text-muted-foreground">
-                  Insira o link direto para o arquivo de mídia
-                </p>
               </div>
             )}
 
@@ -390,14 +483,19 @@ export default function Campanhas() {
                   {campaignName || '-'}
                 </p>
                 <p>
-                  <span className="text-muted-foreground">Tipo de mídia:</span>{' '}
+                  <span className="text-muted-foreground">Mídia:</span>{' '}
                   {mediaTypeLabels[mediaType].label}
                 </p>
                 <p>
                   <span className="text-muted-foreground">Público:</span>{' '}
                   {selectedCriteriosLabels.length > 0 
                     ? selectedCriteriosLabels.join(', ')
-                    : 'Nenhum critério selecionado'}
+                    : 'Nenhum critério'}
+                </p>
+                <p className="flex items-center gap-1">
+                  <Users className="w-3.5 h-3.5 text-muted-foreground" />
+                  <span className="text-muted-foreground">Destinatários:</span>{' '}
+                  <Badge variant="secondary">{filteredClients.length}</Badge>
                 </p>
               </div>
             </div>
@@ -411,11 +509,22 @@ export default function Campanhas() {
             >
               <Send className="w-4 h-4" />
               Enviar Campanha
+              {filteredClients.length > 0 && (
+                <Badge variant="secondary" className="ml-1">
+                  {filteredClients.length}
+                </Badge>
+              )}
             </Button>
 
-            {!isFormValid && (
+            {!isFormValid && selectedCriterios.size > 0 && filteredClients.length === 0 && (
+              <p className="text-xs text-center text-amber-600">
+                Nenhum cliente atende aos critérios selecionados
+              </p>
+            )}
+
+            {!isFormValid && selectedCriterios.size === 0 && (
               <p className="text-xs text-center text-muted-foreground">
-                Preencha todos os campos obrigatórios e selecione ao menos um critério
+                Selecione ao menos um critério para visualizar os clientes
               </p>
             )}
           </CardContent>
@@ -432,7 +541,8 @@ export default function Campanhas() {
             </AlertDialogTitle>
             <AlertDialogDescription className="space-y-3">
               <p>
-                Você está prestes a enviar a campanha <strong>"{campaignName}"</strong>.
+                Você está prestes a enviar a campanha <strong>"{campaignName}"</strong> para{' '}
+                <strong>{filteredClients.length}</strong> cliente(s).
               </p>
               
               <div className="bg-muted p-3 rounded-lg text-sm space-y-2">
@@ -455,12 +565,12 @@ export default function Campanhas() {
                   <p><strong>Mídia:</strong> {mediaUrl}</p>
                 )}
                 <p><strong>Mensagem:</strong></p>
-                <p className="text-muted-foreground whitespace-pre-wrap">{message}</p>
+                <p className="text-muted-foreground whitespace-pre-wrap line-clamp-3">{message}</p>
               </div>
 
               <p className="text-xs text-muted-foreground">
-                Os filtros serão enviados para o webhook do n8n, que identificará os clientes 
-                correspondentes e processará o envio das mensagens via Uazapi.
+                Os dados serão enviados via webhook para o n8n, que é responsável pelo 
+                envio efetivo das mensagens via WhatsApp.
               </p>
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -473,10 +583,7 @@ export default function Campanhas() {
                   Enviando...
                 </>
               ) : (
-                <>
-                  <CheckCircle2 className="w-4 h-4 mr-2" />
-                  Confirmar Envio
-                </>
+                <>Confirmar Envio ({filteredClients.length})</>
               )}
             </AlertDialogAction>
           </AlertDialogFooter>
