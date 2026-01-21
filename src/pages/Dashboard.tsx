@@ -20,6 +20,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { startOfMonth, endOfMonth, startOfDay, endOfDay, format, isWithinInterval } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { ClientStatusSection } from '@/components/dashboard/ClientStatusSection';
+import { RevenueBreakdown } from '@/components/dashboard/RevenueBreakdown';
 
 interface DashboardData {
   // Hoje
@@ -413,6 +414,11 @@ const Dashboard = () => {
             </CardContent>
           </Card>
         </motion.div>
+      </div>
+
+      {/* Revenue Breakdown Section */}
+      <div className="mt-8">
+        <RevenueBreakdown />
       </div>
 
       {/* Client Status Section */}
