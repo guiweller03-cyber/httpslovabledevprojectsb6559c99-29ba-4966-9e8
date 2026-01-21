@@ -406,13 +406,6 @@ const Clientes = () => {
           selectedTypes={selectedCampaignTypes}
           onFilterChange={setSelectedCampaignTypes}
           clientCounts={campaignCounts}
-          filteredClients={filteredClients.map(c => ({
-            id: c.id,
-            name: c.name,
-            whatsapp: c.whatsapp,
-            email: c.email,
-            tipo_campanha: c.tipo_campanha,
-          }))}
         />
       </div>
 
