@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { CreditCard, Plus, Sparkles, Check, AlertCircle, Pencil, Trash2 } from 'lucide-react';
+import { CreditCard, Plus, Sparkles, Check, AlertCircle, Pencil, Trash2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
@@ -17,6 +17,18 @@ import { cn } from '@/lib/utils';
 import { addDays, format, isPast, differenceInDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
+interface IncludedAddon {
+  addon_id: string;
+  quantity: number;
+}
+
+interface ServiceAddon {
+  id: string;
+  name: string;
+  price: number;
+  active: boolean;
+}
+
 interface BathPlan {
   id: string;
   plan_name: string;
@@ -24,6 +36,7 @@ interface BathPlan {
   price: number;
   validity_days: number;
   service_type?: string;
+  included_addons?: IncludedAddon[];
 }
 
 const SERVICE_TYPE_LABELS: Record<string, string> = {
@@ -67,6 +80,7 @@ const Planos = () => {
   const [pets, setPets] = useState<Pet[]>([]);
   const [clientPlans, setClientPlans] = useState<ClientPlan[]>([]);
   const [filteredPets, setFilteredPets] = useState<Pet[]>([]);
+  const [serviceAddons, setServiceAddons] = useState<ServiceAddon[]>([]);
   
   // Dialog states
   const [isSellDialogOpen, setIsSellDialogOpen] = useState(false);
@@ -87,6 +101,7 @@ const Planos = () => {
     validity_days: 90,
     service_type: 'banho_tosa',
   });
+  const [includedAddons, setIncludedAddons] = useState<IncludedAddon[]>([]);
   const [editingPlan, setEditingPlan] = useState<BathPlan | null>(null);
 
   // Fetch all data
@@ -95,17 +110,19 @@ const Planos = () => {
   }, []);
 
   const fetchData = async () => {
-    const [plansRes, clientsRes, petsRes, clientPlansRes] = await Promise.all([
+    const [plansRes, clientsRes, petsRes, clientPlansRes, addonsRes] = await Promise.all([
       supabase.from('bath_plans').select('*').order('total_baths'),
       supabase.from('clients').select('*').order('name'),
       supabase.from('pets').select('*').order('name'),
       (supabase as any).from('client_plans').select('*').order('purchased_at', { ascending: false }),
+      supabase.from('service_addons').select('*').eq('active', true).order('name'),
     ]);
 
     if (plansRes.data) setBathPlans(plansRes.data);
     if (clientsRes.data) setClients(clientsRes.data);
     if (petsRes.data) setPets(petsRes.data);
     if (clientPlansRes.data) setClientPlans(clientPlansRes.data as ClientPlan[]);
+    if (addonsRes.data) setServiceAddons(addonsRes.data);
   };
 
   // Filter pets when client is selected
@@ -122,11 +139,42 @@ const Planos = () => {
   const getClient = (clientId: string) => clients.find(c => c.id === clientId);
   const getPet = (petId: string) => pets.find(p => p.id === petId);
   const getPlan = (planId: string) => bathPlans.find(p => p.id === planId);
+  const getAddon = (addonId: string) => serviceAddons.find(a => a.id === addonId);
 
   const isExpired = (dateStr: string) => isPast(new Date(dateStr));
   const isNearExpiry = (dateStr: string) => {
     const diff = differenceInDays(new Date(dateStr), new Date());
     return diff > 0 && diff <= 7;
+  };
+
+  // Add addon to plan
+  const handleAddAddon = (addonId: string) => {
+    if (!addonId) return;
+    
+    const existing = includedAddons.find(a => a.addon_id === addonId);
+    if (existing) {
+      toast({
+        title: "Opcional já adicionado",
+        description: "Este opcional já está incluído no plano.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    setIncludedAddons([...includedAddons, { addon_id: addonId, quantity: 1 }]);
+  };
+
+  // Update addon quantity
+  const handleUpdateAddonQuantity = (addonId: string, quantity: number) => {
+    if (quantity < 1) return;
+    setIncludedAddons(includedAddons.map(a => 
+      a.addon_id === addonId ? { ...a, quantity } : a
+    ));
+  };
+
+  // Remove addon from plan
+  const handleRemoveAddon = (addonId: string) => {
+    setIncludedAddons(includedAddons.filter(a => a.addon_id !== addonId));
   };
 
   // Sell a plan
@@ -187,10 +235,15 @@ const Planos = () => {
       return;
     }
 
+    const planData = {
+      ...planForm,
+      included_addons: includedAddons,
+    };
+
     if (editingPlan) {
       const { error } = await supabase
         .from('bath_plans')
-        .update(planForm)
+        .update(planData as any)
         .eq('id', editingPlan.id);
 
       if (error) {
@@ -199,7 +252,7 @@ const Planos = () => {
       }
       toast({ title: "Plano atualizado!" });
     } else {
-      const { error } = await supabase.from('bath_plans').insert(planForm);
+      const { error } = await supabase.from('bath_plans').insert(planData as any);
       if (error) {
         toast({ title: "Erro", description: "Não foi possível criar.", variant: "destructive" });
         return;
@@ -208,6 +261,7 @@ const Planos = () => {
     }
 
     setPlanForm({ plan_name: '', total_baths: 1, price: 0, validity_days: 90, service_type: 'banho_tosa' });
+    setIncludedAddons([]);
     setEditingPlan(null);
     setIsPlanDialogOpen(false);
     fetchData();
@@ -223,11 +277,25 @@ const Planos = () => {
     fetchData();
   };
 
+  // Get addon names for display
+  const getAddonsSummary = (addons?: IncludedAddon[]) => {
+    if (!addons || addons.length === 0) return null;
+    return addons.map(a => {
+      const addon = getAddon(a.addon_id);
+      return addon ? `${addon.name} (${a.quantity}x)` : null;
+    }).filter(Boolean).join(', ');
+  };
+
   // Active plans only (not expired and has remaining baths)
   const activePlans = clientPlans.filter(cp => 
     cp.active && 
     !isExpired(cp.expires_at) && 
     (cp.total_baths - cp.used_baths) > 0
+  );
+
+  // Filter addons not already included
+  const availableAddons = serviceAddons.filter(
+    addon => !includedAddons.some(ia => ia.addon_id === addon.id)
   );
 
   return (
@@ -448,13 +516,14 @@ const Planos = () => {
                     onClick={() => {
                       setEditingPlan(null);
                       setPlanForm({ plan_name: '', total_baths: 1, price: 0, validity_days: 90, service_type: 'banho_tosa' });
+                      setIncludedAddons([]);
                     }}
                   >
                     <Plus className="w-4 h-4 mr-2" />
                     Novo Plano
                   </Button>
                 </DialogTrigger>
-                <DialogContent>
+                <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
                   <DialogHeader>
                     <DialogTitle>{editingPlan ? 'Editar Plano' : 'Novo Plano'}</DialogTitle>
                   </DialogHeader>
@@ -513,6 +582,77 @@ const Planos = () => {
                         onChange={(e) => setPlanForm({ ...planForm, price: parseFloat(e.target.value) || 0 })}
                       />
                     </div>
+
+                    {/* Included Addons Section */}
+                    <div className="space-y-3 pt-4 border-t">
+                      <Label className="text-base font-semibold">Opcionais Incluídos</Label>
+                      <p className="text-sm text-muted-foreground">
+                        Adicione serviços opcionais que serão incluídos em cada uso do plano.
+                      </p>
+
+                      {/* List of included addons */}
+                      {includedAddons.length > 0 && (
+                        <div className="space-y-2">
+                          {includedAddons.map((ia) => {
+                            const addon = getAddon(ia.addon_id);
+                            return (
+                              <div 
+                                key={ia.addon_id} 
+                                className="flex items-center justify-between p-3 bg-muted/50 rounded-lg"
+                              >
+                                <div className="flex items-center gap-3">
+                                  <span className="font-medium">{addon?.name}</span>
+                                  <Badge variant="secondary">R$ {addon?.price.toFixed(2)}</Badge>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Label className="text-xs text-muted-foreground">Qtd:</Label>
+                                  <Input
+                                    type="number"
+                                    min={1}
+                                    value={ia.quantity}
+                                    onChange={(e) => handleUpdateAddonQuantity(ia.addon_id, parseInt(e.target.value) || 1)}
+                                    className="w-16 h-8 text-center"
+                                  />
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-8 w-8 text-destructive hover:text-destructive"
+                                    onClick={() => handleRemoveAddon(ia.addon_id)}
+                                  >
+                                    <X className="w-4 h-4" />
+                                  </Button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* Add new addon */}
+                      {availableAddons.length > 0 && (
+                        <div className="flex gap-2">
+                          <Select onValueChange={handleAddAddon}>
+                            <SelectTrigger className="flex-1">
+                              <SelectValue placeholder="Adicionar opcional..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {availableAddons.map(addon => (
+                                <SelectItem key={addon.id} value={addon.id}>
+                                  {addon.name} - R$ {addon.price.toFixed(2)}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+
+                      {serviceAddons.length === 0 && (
+                        <p className="text-sm text-muted-foreground italic">
+                          Nenhum serviço opcional cadastrado.
+                        </p>
+                      )}
+                    </div>
+
                     <Button onClick={handleSavePlan} className="w-full">
                       Salvar
                     </Button>
@@ -529,53 +669,65 @@ const Planos = () => {
                     <TableHead>Qtd</TableHead>
                     <TableHead>Validade</TableHead>
                     <TableHead>Preço</TableHead>
-                    <TableHead>Preço/Un</TableHead>
+                    <TableHead>Opcionais</TableHead>
                     <TableHead className="w-24">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {bathPlans.map((plan) => (
-                    <TableRow key={plan.id}>
-                      <TableCell>
-                        <Badge variant={plan.service_type === 'creche' ? 'secondary' : 'default'}>
-                          {SERVICE_TYPE_LABELS[plan.service_type || 'banho_tosa']}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="font-medium">{plan.plan_name}</TableCell>
-                      <TableCell>{plan.total_baths}</TableCell>
-                      <TableCell>{plan.validity_days} dias</TableCell>
-                      <TableCell>R$ {plan.price.toFixed(2)}</TableCell>
-                      <TableCell>R$ {(plan.price / plan.total_baths).toFixed(2)}</TableCell>
-                      <TableCell>
-                        <div className="flex gap-2">
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={() => {
-                              setEditingPlan(plan);
-                              setPlanForm({
-                                plan_name: plan.plan_name,
-                                total_baths: plan.total_baths,
-                                price: plan.price,
-                                validity_days: plan.validity_days,
-                                service_type: plan.service_type || 'banho_tosa',
-                              });
-                              setIsPlanDialogOpen(true);
-                            }}
-                          >
-                            <Pencil className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={() => handleDeletePlan(plan.id)}
-                          >
-                            <Trash2 className="w-4 h-4 text-destructive" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {bathPlans.map((plan) => {
+                    const addonsSummary = getAddonsSummary(plan.included_addons);
+                    return (
+                      <TableRow key={plan.id}>
+                        <TableCell>
+                          <Badge variant={plan.service_type === 'creche' ? 'secondary' : 'default'}>
+                            {SERVICE_TYPE_LABELS[plan.service_type || 'banho_tosa']}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="font-medium">{plan.plan_name}</TableCell>
+                        <TableCell>{plan.total_baths}</TableCell>
+                        <TableCell>{plan.validity_days} dias</TableCell>
+                        <TableCell>R$ {plan.price.toFixed(2)}</TableCell>
+                        <TableCell className="max-w-[200px]">
+                          {addonsSummary ? (
+                            <span className="text-sm text-muted-foreground truncate block" title={addonsSummary}>
+                              {addonsSummary}
+                            </span>
+                          ) : (
+                            <span className="text-sm text-muted-foreground italic">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex gap-2">
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              onClick={() => {
+                                setEditingPlan(plan);
+                                setPlanForm({
+                                  plan_name: plan.plan_name,
+                                  total_baths: plan.total_baths,
+                                  price: plan.price,
+                                  validity_days: plan.validity_days,
+                                  service_type: plan.service_type || 'banho_tosa',
+                                });
+                                setIncludedAddons(plan.included_addons || []);
+                                setIsPlanDialogOpen(true);
+                              }}
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              onClick={() => handleDeletePlan(plan.id)}
+                            >
+                              <Trash2 className="w-4 h-4 text-destructive" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                   {bathPlans.length === 0 && (
                     <TableRow>
                       <TableCell colSpan={7} className="text-center text-muted-foreground">
