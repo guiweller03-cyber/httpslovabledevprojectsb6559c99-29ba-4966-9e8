@@ -113,6 +113,7 @@ export type Database = {
         Row: {
           created_at: string | null
           id: string
+          included_addons: Json | null
           plan_name: string
           price: number
           service_type: string
@@ -122,6 +123,7 @@ export type Database = {
         Insert: {
           created_at?: string | null
           id?: string
+          included_addons?: Json | null
           plan_name: string
           price: number
           service_type?: string
@@ -131,6 +133,7 @@ export type Database = {
         Update: {
           created_at?: string | null
           id?: string
+          included_addons?: Json | null
           plan_name?: string
           price?: number
           service_type?: string

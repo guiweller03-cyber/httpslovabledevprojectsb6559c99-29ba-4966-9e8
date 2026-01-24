@@ -118,7 +118,16 @@ const Planos = () => {
       supabase.from('service_addons').select('*').eq('active', true).order('name'),
     ]);
 
-    if (plansRes.data) setBathPlans(plansRes.data);
+    if (plansRes.data) {
+      // Cast included_addons from Json to IncludedAddon[]
+      const plansWithAddons = plansRes.data.map(plan => ({
+        ...plan,
+        included_addons: Array.isArray(plan.included_addons) 
+          ? (plan.included_addons as unknown as IncludedAddon[]) 
+          : [],
+      }));
+      setBathPlans(plansWithAddons);
+    }
     if (clientsRes.data) setClients(clientsRes.data);
     if (petsRes.data) setPets(petsRes.data);
     if (clientPlansRes.data) setClientPlans(clientPlansRes.data as ClientPlan[]);
