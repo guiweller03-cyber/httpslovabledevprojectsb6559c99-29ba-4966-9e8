@@ -35,24 +35,34 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Log raw body for debugging (n8n sometimes sends unexpected payloads)
-    const rawBody = await req.clone().text();
-    console.log('google-calendar-sync raw body:', rawBody);
+    // Read raw body as text first (avoids Deno/Supabase "empty body" issues with req.json())
+    const bodyText = await req.text();
+    console.log('Corpo recebido:', bodyText);
 
-    if (!rawBody || rawBody.trim().length === 0) {
-      return jsonResponse(400, { error: 'Empty request body' })
+    const contentType = req.headers.get('content-type');
+    const contentLength = req.headers.get('content-length');
+    console.log('Request meta:', {
+      method: req.method,
+      contentType,
+      contentLength,
+    });
+
+    if (!bodyText || bodyText.trim().length === 0) {
+      return jsonResponse(400, {
+        error: 'Empty request body',
+        details: { contentType, contentLength },
+      })
     }
 
     let payload: SyncPayload;
     try {
-      // Requirement: parse via await req.json() inside try/catch
-      payload = (await req.clone().json()) as SyncPayload;
+      payload = JSON.parse(bodyText) as SyncPayload;
     } catch (parseError) {
       console.error('Failed to parse JSON body:', parseError);
       return jsonResponse(400, {
         error: 'Invalid JSON body',
         details: String(parseError),
-        rawBody,
+        bodyText,
       })
     }
 
