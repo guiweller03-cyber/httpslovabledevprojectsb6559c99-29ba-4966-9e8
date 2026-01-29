@@ -1,6 +1,6 @@
 // Webhook utility functions
 
-const WEBHOOK_URL = 'https://petzap-n8n.slfjaq.easypanel.host/webhook-test/create';
+const WEBHOOK_URL = 'https://petzap-n8n.slfjaq.easypanel.host/webhook/create';
 
 export interface WebhookPayload {
   action: 'create';
