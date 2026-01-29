@@ -2,7 +2,17 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers':
+    'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
+}
+
+const jsonHeaders = {
+  ...corsHeaders,
+  'Content-Type': 'application/json',
+}
+
+function jsonResponse(status: number, body: unknown) {
+  return new Response(JSON.stringify(body), { status, headers: jsonHeaders })
 }
 
 interface SyncPayload {
@@ -17,27 +27,41 @@ interface SyncPayload {
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return new Response('ok', { headers: corsHeaders });
   }
 
   if (req.method !== 'POST') {
-    return new Response(
-      JSON.stringify({ error: 'Method not allowed' }),
-      { status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return jsonResponse(405, { error: 'Method not allowed' })
   }
 
   try {
-    const payload: SyncPayload = await req.json();
+    // Log raw body for debugging (n8n sometimes sends unexpected payloads)
+    const rawBody = await req.clone().text();
+    console.log('google-calendar-sync raw body:', rawBody);
+
+    if (!rawBody || rawBody.trim().length === 0) {
+      return jsonResponse(400, { error: 'Empty request body' })
+    }
+
+    let payload: SyncPayload;
+    try {
+      // Requirement: parse via await req.json() inside try/catch
+      payload = (await req.clone().json()) as SyncPayload;
+    } catch (parseError) {
+      console.error('Failed to parse JSON body:', parseError);
+      return jsonResponse(400, {
+        error: 'Invalid JSON body',
+        details: String(parseError),
+        rawBody,
+      })
+    }
+
     console.log('Received sync payload:', payload);
 
     const { event_id, status, start_date, end_date, summary, description } = payload;
 
     if (!event_id) {
-      return new Response(
-        JSON.stringify({ error: 'event_id is required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return jsonResponse(400, { error: 'event_id is required' })
     }
 
     // Create Supabase client with service role for full access
@@ -97,10 +121,7 @@ Deno.serve(async (req) => {
 
       if (updateError) {
         console.error('Error updating bath_grooming_appointments:', updateError);
-        return new Response(
-          JSON.stringify({ error: 'Failed to update appointment', details: updateError.message }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        return jsonResponse(500, { error: 'Failed to update appointment', details: updateError.message })
       }
 
       console.log(`Updated bath_grooming_appointments id=${bathAppointment.id}`, updateData);
@@ -151,10 +172,7 @@ Deno.serve(async (req) => {
 
         if (updateError) {
           console.error('Error updating hotel_stays:', updateError);
-          return new Response(
-            JSON.stringify({ error: 'Failed to update hotel stay', details: updateError.message }),
-            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
+          return jsonResponse(500, { error: 'Failed to update hotel stay', details: updateError.message })
         }
 
         console.log(`Updated hotel_stays id=${hotelStay.id}`, updateData);
@@ -170,14 +188,11 @@ Deno.serve(async (req) => {
 
       if (!petName) {
         console.log('No pet name found in summary');
-        return new Response(
-          JSON.stringify({ 
-            success: false, 
-            message: 'Cannot create appointment: no pet name in summary',
-            event_id 
-          }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        return jsonResponse(400, {
+          success: false,
+          message: 'Cannot create appointment: no pet name in summary',
+          event_id,
+        })
       }
 
       // Try to find a pet by name (case-insensitive)
@@ -188,22 +203,16 @@ Deno.serve(async (req) => {
 
       if (petsError) {
         console.error('Error searching pets:', petsError);
-        return new Response(
-          JSON.stringify({ error: 'Failed to search pets', details: petsError.message }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        return jsonResponse(500, { error: 'Failed to search pets', details: petsError.message })
       }
 
       if (!pets || pets.length === 0) {
         console.log(`No pet found with name: ${petName}`);
-        return new Response(
-          JSON.stringify({ 
-            success: false, 
-            message: `Pet not found: ${petName}`,
-            event_id 
-          }),
-          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        return jsonResponse(404, {
+          success: false,
+          message: `Pet not found: ${petName}`,
+          event_id,
+        })
       }
 
       // Use the first matching pet
@@ -242,10 +251,7 @@ Deno.serve(async (req) => {
 
         if (createError) {
           console.error('Error creating hotel stay:', createError);
-          return new Response(
-            JSON.stringify({ error: 'Failed to create hotel stay', details: createError.message }),
-            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
+          return jsonResponse(500, { error: 'Failed to create hotel stay', details: createError.message })
         }
 
         console.log('Created new hotel stay:', newStay.id);
@@ -280,10 +286,7 @@ Deno.serve(async (req) => {
 
         if (createError) {
           console.error('Error creating appointment:', createError);
-          return new Response(
-            JSON.stringify({ error: 'Failed to create appointment', details: createError.message }),
-            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
+          return jsonResponse(500, { error: 'Failed to create appointment', details: createError.message })
         }
 
         console.log('Created new appointment:', newAppointment.id);
@@ -295,44 +298,32 @@ Deno.serve(async (req) => {
 
     if (!found && isCancelled) {
       console.log(`Event ${event_id} not found, but status is cancelled - nothing to do`);
-      return new Response(
-        JSON.stringify({ 
-          success: true, 
-          message: 'Event not found but already cancelled - no action needed',
-          event_id 
-        }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return jsonResponse(200, {
+        success: true,
+        message: 'Event not found but already cancelled - no action needed',
+        event_id,
+      })
     }
 
     if (!found) {
       console.log(`No record found for event_id: ${event_id}`);
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          message: 'Event not found in any table and could not be created',
-          event_id 
-        }),
-        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return jsonResponse(404, {
+        success: false,
+        message: 'Event not found in any table and could not be created',
+        event_id,
+      })
     }
 
-    return new Response(
-      JSON.stringify({ 
-        success: true, 
-        message: `Appointment ${actionTaken}`,
-        action: actionTaken,
-        table: updatedTable,
-        event_id 
-      }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return jsonResponse(200, {
+      success: true,
+      message: `Appointment ${actionTaken}`,
+      action: actionTaken,
+      table: updatedTable,
+      event_id,
+    })
 
   } catch (error) {
     console.error('Error processing request:', error);
-    return new Response(
-      JSON.stringify({ error: 'Internal server error', details: String(error) }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return jsonResponse(500, { error: 'Internal server error', details: String(error) })
   }
 });
