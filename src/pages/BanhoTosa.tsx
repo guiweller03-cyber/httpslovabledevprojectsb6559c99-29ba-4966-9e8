@@ -16,6 +16,7 @@ import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
+import { sendCreateWebhook } from '@/lib/webhooks';
 
 type AppointmentStatus = 'agendado' | 'em_atendimento' | 'pronto' | 'finalizado' | 'cancelado';
 
@@ -590,6 +591,20 @@ const BanhoTosa = () => {
       });
       return;
     }
+
+    // Disparar webhook após salvar no banco
+    const pet = pets.find(p => p.id === formData.petId);
+    const client = clients.find(c => c.id === formData.clientId);
+    const serviceLabel = formData.service === 'banho' ? 'Banho' : 'Tosa';
+
+    await sendCreateWebhook({
+      action: 'create',
+      pet_name: pet?.name || '',
+      service: serviceLabel,
+      start_date: startDate.toISOString(),
+      end_date: endDate.toISOString(),
+      client_name: client?.name || '',
+    });
 
     toast({
       title: "Agendamento criado!",

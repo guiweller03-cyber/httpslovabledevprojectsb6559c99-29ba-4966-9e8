@@ -16,6 +16,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { format, isToday, isPast } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { sendCreateWebhook } from '@/lib/webhooks';
 
 type HotelStatus = 'reservado' | 'check_in' | 'hospedado' | 'check_out' | 'cancelado';
 
@@ -423,8 +424,20 @@ const HotelCreche = () => {
       return;
     }
 
+    // Disparar webhook após salvar no banco
+    const pet = pets.find(p => p.id === formData.petId);
+    const client = clients.find(c => c.id === formData.clientId);
     const serviceLabel = formData.serviceType === 'creche' ? 'Creche' : 'Hotel';
     const planMessage = isPlanUsage ? ' (PLANO)' : '';
+
+    await sendCreateWebhook({
+      action: 'create',
+      pet_name: pet?.name || '',
+      service: serviceLabel,
+      start_date: checkInDate.toISOString(),
+      end_date: checkOutDate.toISOString(),
+      client_name: client?.name || '',
+    });
 
     toast({
       title: `✅ ${serviceLabel} reservado!${planMessage}`,
