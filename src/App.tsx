@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { TenantProvider } from "@/contexts/TenantContext";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
@@ -22,6 +23,7 @@ import ServicosDoDia from "./pages/ServicosDoDia";
 import RotaDoDia from "./pages/RotaDoDia";
 import Faturamento from "./pages/Faturamento";
 import Estoque from "./pages/Estoque";
+import Equipe from "./pages/Equipe";
 
 import NotFound from "./pages/NotFound";
 import Auth from "./pages/Auth";
@@ -41,56 +43,59 @@ function App() {
         <Sonner />
         <BrowserRouter>
           <AuthProvider>
-            <Routes>
-              {/* Auth Route */}
-              <Route path="/auth" element={<Auth />} />
-              
-              {/* Admin Routes */}
-              <Route path="/admin" element={
-                <ProtectedRoute requireAdmin>
-                  <AdminLayout><AdminDashboard /></AdminLayout>
-                </ProtectedRoute>
-              } />
-              <Route path="/admin/usuarios" element={
-                <ProtectedRoute requireAdmin>
-                  <AdminLayout><AdminUsers /></AdminLayout>
-                </ProtectedRoute>
-              } />
-              <Route path="/admin/dados" element={
-                <ProtectedRoute requireAdmin>
-                  <AdminLayout><AdminData /></AdminLayout>
-                </ProtectedRoute>
-              } />
-              <Route path="/admin/config" element={
-                <ProtectedRoute requireAdmin>
-                  <AdminLayout><AdminConfig /></AdminLayout>
-                </ProtectedRoute>
-              } />
-              <Route path="/admin/acoes" element={
-                <ProtectedRoute requireAdmin>
-                  <AdminLayout><AdminActions /></AdminLayout>
-                </ProtectedRoute>
-              } />
-              
-              {/* Main App Routes - Protected */}
-              <Route path="/" element={<ProtectedRoute><MainLayout><Dashboard /></MainLayout></ProtectedRoute>} />
-              <Route path="/banho-tosa" element={<ProtectedRoute><MainLayout><BanhoTosa /></MainLayout></ProtectedRoute>} />
-              <Route path="/hotel-creche" element={<ProtectedRoute><MainLayout><HotelCreche /></MainLayout></ProtectedRoute>} />
-              <Route path="/planos" element={<ProtectedRoute><MainLayout><Planos /></MainLayout></ProtectedRoute>} />
-              <Route path="/clientes" element={<ProtectedRoute><MainLayout><Clientes /></MainLayout></ProtectedRoute>} />
-              <Route path="/lembretes" element={<ProtectedRoute><MainLayout><Lembretes /></MainLayout></ProtectedRoute>} />
-              <Route path="/inativos" element={<ProtectedRoute><MainLayout><Inativos /></MainLayout></ProtectedRoute>} />
-              <Route path="/caixa" element={<ProtectedRoute><MainLayout><FrenteCaixa /></MainLayout></ProtectedRoute>} />
-              <Route path="/whatsapp" element={<ProtectedRoute><MainLayout><WhatsAppPanel /></MainLayout></ProtectedRoute>} />
-              <Route path="/importar" element={<ProtectedRoute><MainLayout><Importar /></MainLayout></ProtectedRoute>} />
-              <Route path="/tabela-valores" element={<ProtectedRoute><MainLayout><TabelaValores /></MainLayout></ProtectedRoute>} />
-              <Route path="/servicos-do-dia" element={<ProtectedRoute><MainLayout><ServicosDoDia /></MainLayout></ProtectedRoute>} />
-              <Route path="/rota-do-dia" element={<ProtectedRoute><MainLayout><RotaDoDia /></MainLayout></ProtectedRoute>} />
-              <Route path="/faturamento" element={<ProtectedRoute><MainLayout><Faturamento /></MainLayout></ProtectedRoute>} />
-              <Route path="/estoque" element={<ProtectedRoute><MainLayout><Estoque /></MainLayout></ProtectedRoute>} />
-              
-              <Route path="*" element={<NotFound />} />
-            </Routes>
+            <TenantProvider>
+              <Routes>
+                {/* Auth Route */}
+                <Route path="/auth" element={<Auth />} />
+                
+                {/* Admin Routes (Control Room - System Admin) */}
+                <Route path="/admin" element={
+                  <ProtectedRoute requireAdmin>
+                    <AdminLayout><AdminDashboard /></AdminLayout>
+                  </ProtectedRoute>
+                } />
+                <Route path="/admin/usuarios" element={
+                  <ProtectedRoute requireAdmin>
+                    <AdminLayout><AdminUsers /></AdminLayout>
+                  </ProtectedRoute>
+                } />
+                <Route path="/admin/dados" element={
+                  <ProtectedRoute requireAdmin>
+                    <AdminLayout><AdminData /></AdminLayout>
+                  </ProtectedRoute>
+                } />
+                <Route path="/admin/config" element={
+                  <ProtectedRoute requireAdmin>
+                    <AdminLayout><AdminConfig /></AdminLayout>
+                  </ProtectedRoute>
+                } />
+                <Route path="/admin/acoes" element={
+                  <ProtectedRoute requireAdmin>
+                    <AdminLayout><AdminActions /></AdminLayout>
+                  </ProtectedRoute>
+                } />
+                
+                {/* Main App Routes - Protected with Tenant */}
+                <Route path="/" element={<ProtectedRoute><MainLayout><Dashboard /></MainLayout></ProtectedRoute>} />
+                <Route path="/banho-tosa" element={<ProtectedRoute><MainLayout><BanhoTosa /></MainLayout></ProtectedRoute>} />
+                <Route path="/hotel-creche" element={<ProtectedRoute><MainLayout><HotelCreche /></MainLayout></ProtectedRoute>} />
+                <Route path="/planos" element={<ProtectedRoute><MainLayout><Planos /></MainLayout></ProtectedRoute>} />
+                <Route path="/clientes" element={<ProtectedRoute><MainLayout><Clientes /></MainLayout></ProtectedRoute>} />
+                <Route path="/lembretes" element={<ProtectedRoute><MainLayout><Lembretes /></MainLayout></ProtectedRoute>} />
+                <Route path="/inativos" element={<ProtectedRoute><MainLayout><Inativos /></MainLayout></ProtectedRoute>} />
+                <Route path="/caixa" element={<ProtectedRoute><MainLayout><FrenteCaixa /></MainLayout></ProtectedRoute>} />
+                <Route path="/whatsapp" element={<ProtectedRoute><MainLayout><WhatsAppPanel /></MainLayout></ProtectedRoute>} />
+                <Route path="/importar" element={<ProtectedRoute><MainLayout><Importar /></MainLayout></ProtectedRoute>} />
+                <Route path="/tabela-valores" element={<ProtectedRoute><MainLayout><TabelaValores /></MainLayout></ProtectedRoute>} />
+                <Route path="/servicos-do-dia" element={<ProtectedRoute><MainLayout><ServicosDoDia /></MainLayout></ProtectedRoute>} />
+                <Route path="/rota-do-dia" element={<ProtectedRoute><MainLayout><RotaDoDia /></MainLayout></ProtectedRoute>} />
+                <Route path="/faturamento" element={<ProtectedRoute><MainLayout><Faturamento /></MainLayout></ProtectedRoute>} />
+                <Route path="/estoque" element={<ProtectedRoute><MainLayout><Estoque /></MainLayout></ProtectedRoute>} />
+                <Route path="/equipe" element={<ProtectedRoute requireTenantAdmin><MainLayout><Equipe /></MainLayout></ProtectedRoute>} />
+                
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </TenantProvider>
           </AuthProvider>
         </BrowserRouter>
       </TooltipProvider>

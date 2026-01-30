@@ -16,6 +16,7 @@ import {
   Car,
   TrendingUp,
   Shield,
+  UsersRound,
 } from 'lucide-react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
@@ -23,6 +24,7 @@ import { Button } from '@/components/ui/button';
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTenant } from '@/contexts/TenantContext';
 import petzapLogo from '@/assets/petzap-logo.png';
 
 // Base navigation items (always visible)
@@ -49,6 +51,7 @@ export function AppSidebar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
+  const { isTenantAdmin } = useTenant();
 
   return (
     <motion.aside
@@ -138,9 +141,25 @@ export function AppSidebar() {
         </ul>
       </nav>
 
-      {/* Admin Link + Collapse Toggle */}
+      {/* Admin Links + Collapse Toggle */}
       <div className="p-3 border-t border-sidebar-border space-y-2">
-        {/* Control Room - Admin Only */}
+        {/* Team Management - Tenant Admin Only */}
+        {isTenantAdmin && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => navigate('/equipe')}
+            className={cn(
+              "w-full bg-sidebar-accent/50 text-sidebar-foreground hover:bg-sidebar-accent border border-sidebar-border",
+              collapsed ? "justify-center" : "justify-start"
+            )}
+          >
+            <UsersRound className="w-5 h-5 text-emerald-400" />
+            {!collapsed && <span className="ml-3 font-medium">Equipe</span>}
+          </Button>
+        )}
+        
+        {/* Control Room - System Admin Only */}
         {isAdmin && (
           <Button
             variant="ghost"
