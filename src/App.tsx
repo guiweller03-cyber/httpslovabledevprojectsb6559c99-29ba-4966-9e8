@@ -25,6 +25,7 @@ import Estoque from "./pages/Estoque";
 
 import NotFound from "./pages/NotFound";
 import Auth from "./pages/Auth";
+import TenantSetup from "./pages/TenantSetup";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminUsers from "./pages/admin/AdminUsers";
 import AdminData from "./pages/admin/AdminData";
@@ -42,8 +43,9 @@ function App() {
         <BrowserRouter>
           <AuthProvider>
             <Routes>
-              {/* Auth Route */}
+              {/* Auth Routes */}
               <Route path="/auth" element={<Auth />} />
+              <Route path="/setup" element={<TenantSetup />} />
               
               {/* Admin Routes */}
               <Route path="/admin" element={
