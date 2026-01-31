@@ -45,12 +45,15 @@ interface InactiveClient {
   pets: string[];
 }
 
+const WEBHOOK_URL = 'https://petzap-n8n.slfjaq.easypanel.host/webhook-test/inativos';
+
 const Inativos = () => {
   const [clients, setClients] = useState<ClientDB[]>([]);
   const [pets, setPets] = useState<PetDB[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [period, setPeriod] = useState('30');
   const [selectedClients, setSelectedClients] = useState<string[]>([]);
+  const [isSendingCampaign, setIsSendingCampaign] = useState(false);
 
   // Fetch data from database
   const fetchData = async () => {
@@ -193,34 +196,53 @@ const Inativos = () => {
     toast.success(`${exportData.length} clientes copiados para a área de transferência`);
   };
 
-  // Send campaign to n8n
-  const handleSendCampaign = () => {
+  // Send campaign to n8n via webhook
+  const handleSendCampaign = async () => {
     if (selectedClients.length === 0) {
       toast.error('Selecione pelo menos um cliente');
       return;
     }
 
-    const dataToSend = inactiveClients
-      .filter(c => selectedClients.includes(c.id))
-      .map(c => ({
-        nome_tutor: c.name,
-        telefone_tutor: c.whatsapp,
-        email: c.email,
-        nome_pet: c.pets.join(', ') || 'Nenhum pet cadastrado',
-        ultima_data_compra: c.lastPurchase ? format(c.lastPurchase, 'yyyy-MM-dd') : null,
-        dias_sem_compra: c.daysSinceLastPurchase === -1 ? 'Nunca comprou' : c.daysSinceLastPurchase,
-      }));
+    setIsSendingCampaign(true);
 
-    const webhookPayload = {
-      event: 'campanha_reativacao',
-      data: dataToSend,
-      total: dataToSend.length,
-      timestamp: new Date().toISOString(),
-    };
+    try {
+      // Get full client data including pets
+      const selectedClientData = inactiveClients.filter(c => selectedClients.includes(c.id));
+      
+      // Build payload with all client information
+      const payload = {
+        clientes: selectedClientData.map(c => ({
+          nome: c.name,
+          whatsapp: c.whatsapp,
+          email: c.email,
+          pets: c.pets,
+          ultima_compra: c.lastPurchase ? format(c.lastPurchase, 'yyyy-MM-dd') : null,
+          dias_inativo: c.daysSinceLastPurchase === -1 ? null : c.daysSinceLastPurchase,
+        })),
+      };
 
-    console.log('📤 Webhook Campanha Reativação:', webhookPayload);
-    toast.success(`Dados de ${selectedClients.length} cliente(s) prontos para n8n`);
-    setSelectedClients([]);
+      console.log('📤 Enviando webhook para n8n:', payload);
+
+      const response = await fetch(WEBHOOK_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Erro HTTP: ${response.status}`);
+      }
+
+      toast.success(`Campanha enviada com sucesso! ${selectedClients.length} cliente(s) enviados.`);
+      setSelectedClients([]);
+    } catch (error) {
+      console.error('Erro ao enviar campanha:', error);
+      toast.error('Erro ao enviar campanha. Verifique o console para mais detalhes.');
+    } finally {
+      setIsSendingCampaign(false);
+    }
   };
 
   return (
@@ -266,10 +288,14 @@ const Inativos = () => {
           </Button>
           <Button 
             onClick={handleSendCampaign}
-            disabled={selectedClients.length === 0}
+            disabled={selectedClients.length === 0 || isSendingCampaign}
           >
-            <Send className="w-4 h-4 mr-2" />
-            Campanha ({selectedClients.length})
+            {isSendingCampaign ? (
+              <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <Send className="w-4 h-4 mr-2" />
+            )}
+            {isSendingCampaign ? 'Enviando...' : `Campanha (${selectedClients.length})`}
           </Button>
         </div>
       </motion.div>
