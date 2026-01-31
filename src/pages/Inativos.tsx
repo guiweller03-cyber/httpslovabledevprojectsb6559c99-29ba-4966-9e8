@@ -45,7 +45,7 @@ interface InactiveClient {
   pets: string[];
 }
 
-const WEBHOOK_URL = 'https://petzap-n8n.slfjaq.easypanel.host/webhook-test/inativos';
+
 
 const Inativos = () => {
   const [clients, setClients] = useState<ClientDB[]>([]);
@@ -221,18 +221,18 @@ const Inativos = () => {
         })),
       };
 
-      console.log('📤 Enviando webhook para n8n:', payload);
+      console.log('📤 Enviando webhook para n8n via edge function:', payload);
 
-      const response = await fetch(WEBHOOK_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
+      const { data, error } = await supabase.functions.invoke('send-campaign-webhook', {
+        body: payload,
       });
 
-      if (!response.ok) {
-        throw new Error(`Erro HTTP: ${response.status}`);
+      if (error) {
+        throw new Error(error.message || 'Erro ao enviar webhook');
+      }
+
+      if (!data?.success) {
+        throw new Error(data?.error || 'Erro desconhecido');
       }
 
       toast.success(`Campanha enviada com sucesso! ${selectedClients.length} cliente(s) enviados.`);
