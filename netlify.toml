@@ -1,0 +1,16 @@
+[build]
+  publish = "dist"
+  command = "npm run build"
+
+# Handle OAuth routes with force to prevent 404
+[[redirects]]
+  from = "/~oauth/*"
+  to = "/index.html"
+  status = 200
+  force = true
+
+# Handle all other SPA routes
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
