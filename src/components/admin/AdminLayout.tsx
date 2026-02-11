@@ -120,6 +120,18 @@ export function AdminLayout({ children }: AdminLayoutProps) {
           <Button
             variant="ghost"
             size="sm"
+            onClick={() => navigate('/')}
+            className={cn(
+              "w-full text-[#94A3B8] hover:text-white hover:bg-[#2D3A45]",
+              collapsed ? "justify-center" : "justify-start"
+            )}
+          >
+            <LayoutDashboard className="w-5 h-5" />
+            {!collapsed && <span className="ml-3">Voltar ao Dashboard</span>}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={handleSignOut}
             className={cn(
               "w-full text-[#94A3B8] hover:text-white hover:bg-[#2D3A45]",
