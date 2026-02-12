@@ -116,6 +116,47 @@ export const sendUpdateWebhook = async (payload: UpdateWebhookPayload): Promise<
   }
 };
 
+// Send PET PRONTO webhook (WhatsApp notification)
+export interface PetProntoWebhookPayload {
+  action: 'pet_pronto';
+  pet_name: string;
+  client_name: string;
+  client_whatsapp: string;
+  service: string;
+  appointment_id: string;
+}
+
+export const sendPetProntoWebhook = async (payload: PetProntoWebhookPayload): Promise<WebhookResponse> => {
+  try {
+    console.log('Sending PET PRONTO webhook with payload:', payload);
+    
+    const response = await fetch(`${WEBHOOK_BASE_URL}/pet-pronto`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      console.error('Pet Pronto webhook failed:', response.status, response.statusText);
+      return { success: false, message: `HTTP ${response.status}` };
+    }
+
+    try {
+      const data = await response.json();
+      console.log('Pet Pronto webhook response:', data);
+      return { success: true, message: 'Pet Pronto notification sent' };
+    } catch {
+      console.log('Pet Pronto webhook sent successfully (no JSON response)');
+      return { success: true };
+    }
+  } catch (error) {
+    console.error('Pet Pronto webhook error:', error);
+    return { success: false, message: String(error) };
+  }
+};
+
 // Send DELETE webhook
 export const sendDeleteWebhook = async (payload: DeleteWebhookPayload): Promise<WebhookResponse> => {
   try {
