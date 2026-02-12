@@ -521,15 +521,39 @@ export default function ServicosDoDia() {
               )}
             </div>
             
-            {/* Action buttons */}
+            {/* Action button - Ir para pagamento (only when NOT completed) */}
             {!isCompleted && (
-              <div className="flex gap-2 mt-3">
+              <Button
+                size="sm"
+                className="w-full mt-3 bg-primary hover:bg-primary/90 gap-2"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleFinalizarAtendimento(apt);
+                }}
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                Ir para pagamento
+              </Button>
+            )}
+
+            {/* Pet Pronto + Cobrar - only in Concluído column */}
+            {isCompleted && (
+              <div className="flex flex-col gap-2 mt-3">
                 <Button
                   size="sm"
-                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 gap-1"
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 gap-2"
                   disabled={sendingPetPronto === apt.id}
                   onClick={(e) => {
                     e.stopPropagation();
+                    const client = getClient(apt.client_id);
+                    if (!client?.whatsapp) {
+                      toast({
+                        title: "⚠️ WhatsApp não cadastrado",
+                        description: "Este tutor não possui WhatsApp cadastrado. Avise manualmente.",
+                        variant: "destructive",
+                      });
+                      return;
+                    }
                     handlePetPronto(apt);
                   }}
                 >
@@ -538,36 +562,23 @@ export default function ServicosDoDia() {
                   ) : (
                     <MessageCircle className="w-4 h-4" />
                   )}
-                  Pet Pronto
+                  🐾 Pet Pronto - Avisar Tutor
                 </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="flex-1 gap-1"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleFinalizarAtendimento(apt);
-                  }}
-                >
-                  <DollarSign className="w-4 h-4" />
-                  Pagamento
-                </Button>
+                {!isPaid && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full gap-2"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleGoToCaixa(apt);
+                    }}
+                  >
+                    <DollarSign className="w-4 h-4" />
+                    💳 Cobrar agora
+                  </Button>
+                )}
               </div>
-            )}
-
-            {/* Payment status for completed items */}
-            {isCompleted && !isPaid && (
-              <Button
-                size="sm"
-                className="w-full mt-3 bg-green-600 hover:bg-green-700 gap-2 animate-pulse"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleGoToCaixa(apt);
-                }}
-              >
-                <DollarSign className="w-4 h-4" />
-                💳 Cobrar agora
-              </Button>
             )}
           </div>
         </div>
