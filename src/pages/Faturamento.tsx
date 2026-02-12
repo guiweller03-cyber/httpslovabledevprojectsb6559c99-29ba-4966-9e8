@@ -144,38 +144,29 @@ const Faturamento = () => {
       });
       setClients(clientMap);
 
-      // Fetch sales with items
-      const { data: salesData } = await supabase
-        .from('sales')
-        .select(`
-          id,
-          created_at,
-          total_amount,
-          subtotal,
-          payment_method,
-          payment_status,
-          client_id,
-          pet_id,
-          notes,
-          sale_items(
-            id,
-            sale_id,
-            description,
-            item_type,
-            quantity,
-            unit_price,
-            total_price,
-            covered_by_plan,
-            pet_id,
-            product_id
-          )
-        `)
-        .eq('payment_status', 'pago')
-        .order('created_at', { ascending: false });
+      // Fetch sales and sale_items separately (no FK relationship)
+      const [{ data: salesData }, { data: saleItemsData }] = await Promise.all([
+        supabase
+          .from('sales')
+          .select('id, created_at, total_amount, subtotal, payment_method, payment_status, client_id, pet_id, notes')
+          .eq('payment_status', 'pago')
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('sale_items')
+          .select('id, sale_id, description, item_type, quantity, unit_price, total_price, covered_by_plan, pet_id, product_id')
+      ]);
+
+      // Group sale_items by sale_id
+      const itemsBySaleId: Record<string, SaleItem[]> = {};
+      (saleItemsData || []).forEach((item: any) => {
+        if (!item.sale_id) return;
+        if (!itemsBySaleId[item.sale_id]) itemsBySaleId[item.sale_id] = [];
+        itemsBySaleId[item.sale_id].push(item);
+      });
 
       const salesWithItems = (salesData || []).map((s: any) => ({
         ...s,
-        items: s.sale_items || [],
+        items: itemsBySaleId[s.id] || [],
         client_name: s.client_id ? clientMap[s.client_id] : null,
       }));
       setSales(salesWithItems);
@@ -361,17 +352,17 @@ const Faturamento = () => {
 
         if (type === 'adicional' || desc.includes('adicional')) {
           additionalsTotal += item.total_price;
-          additionalsCount += item.quantity;
+          additionalsCount += 1;
         } else if (type === 'produto' || item.product_id) {
           productsTotal += item.total_price;
-          productsCount += item.quantity;
+          productsCount += 1;
         } else if (type === 'servico' || desc.includes('banho') || desc.includes('tosa')) {
           servicesTotal += item.total_price;
-          servicesCount += item.quantity;
+          servicesCount += 1;
         } else {
           // Default to services
           servicesTotal += item.total_price;
-          servicesCount += item.quantity;
+          servicesCount += 1;
         }
       });
     });
