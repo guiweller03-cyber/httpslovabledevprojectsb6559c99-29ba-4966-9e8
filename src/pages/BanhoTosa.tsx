@@ -387,6 +387,12 @@ const BanhoTosa = () => {
     }));
   };
 
+  // Service type colors for calendar border
+  const serviceTypeColors: Record<string, string> = {
+    banho: '#3b82f6',       // Blue for banho
+    banho_tosa: '#eab308',  // Yellow for banho + tosa
+  };
+
   // Filter out cancelled appointments from calendar (or show differently)
   const events = appointments
     .filter(apt => apt.status !== 'cancelado') // Hide cancelled from calendar
@@ -394,6 +400,7 @@ const BanhoTosa = () => {
       const pet = pets.find(p => p.id === apt.pet_id);
       const client = clients.find(c => c.id === apt.client_id);
       const planLabel = apt.is_plan_usage ? ' [PLANO]' : '';
+      const borderColor = serviceTypeColors[apt.service_type] || '#3b82f6';
       
       return {
         id: apt.id,
@@ -401,7 +408,8 @@ const BanhoTosa = () => {
         start: apt.start_datetime,
         end: apt.end_datetime,
         backgroundColor: apt.is_plan_usage ? '#22c55e' : statusColors[(apt.status as AppointmentStatus) || 'agendado'],
-        borderColor: apt.is_plan_usage ? '#22c55e' : statusColors[(apt.status as AppointmentStatus) || 'agendado'],
+        borderColor: borderColor,
+        classNames: [apt.service_type === 'banho' ? 'event-banho' : 'event-banho-tosa'],
         extendedProps: {
           ...apt,
           petName: pet?.name,

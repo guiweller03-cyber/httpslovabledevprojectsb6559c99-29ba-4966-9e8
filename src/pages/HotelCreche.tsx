@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
+import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import { motion } from 'framer-motion';
 import { Plus, Home, XCircle, AlertTriangle, Baby, Building } from 'lucide-react';
@@ -752,12 +753,12 @@ const HotelCreche = () => {
             <CardContent className="p-6">
               <FullCalendar
                 ref={calendarRef}
-                plugins={[dayGridPlugin, interactionPlugin]}
+                plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
                 initialView="dayGridMonth"
                 headerToolbar={{
                   left: 'prev,next today',
                   center: 'title',
-                  right: 'dayGridMonth',
+                  right: 'timeGridDay,timeGridWeek,dayGridMonth',
                 }}
                 locale="pt-br"
                 events={events}
@@ -766,6 +767,8 @@ const HotelCreche = () => {
                 buttonText={{
                   today: 'Hoje',
                   month: 'Mês',
+                  week: 'Semana',
+                  day: 'Dia',
                 }}
               />
             </CardContent>
