@@ -1,12 +1,13 @@
 import { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { UserX, Calendar, ShoppingBag, Send, Filter, CheckSquare, Square, RefreshCw, Download, Phone, Dog } from 'lucide-react';
+import { UserX, Calendar, ShoppingBag, Send, Filter, CheckSquare, Square, RefreshCw, Download, Phone, Dog, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { differenceInDays, format } from 'date-fns';
@@ -397,6 +398,7 @@ const Inativos = () => {
                     <TableHead>Pets</TableHead>
                     <TableHead>Última Compra</TableHead>
                     <TableHead>Dias Sem Compra</TableHead>
+                    <TableHead className="w-12"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -455,6 +457,43 @@ const Inativos = () => {
                             {client.daysSinceLastPurchase} dias
                           </Badge>
                         )}
+                      </TableCell>
+                      <TableCell onClick={(e) => e.stopPropagation()}>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive hover:bg-destructive/10">
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Excluir cliente</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Tem certeza que deseja excluir <strong>{client.name}</strong>? Esta ação também removerá todos os pets associados e não pode ser desfeita.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                              <AlertDialogAction
+                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                onClick={async () => {
+                                  // Delete pets first, then client
+                                  await supabase.from('pets').delete().eq('client_id', client.id);
+                                  const { error } = await supabase.from('clients').delete().eq('id', client.id);
+                                  if (error) {
+                                    toast.error('Erro ao excluir cliente');
+                                  } else {
+                                    toast.success(`${client.name} foi excluído`);
+                                    setSelectedClients(prev => prev.filter(id => id !== client.id));
+                                    fetchData();
+                                  }
+                                }}
+                              >
+                                Excluir
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
                       </TableCell>
                     </TableRow>
                   ))}
