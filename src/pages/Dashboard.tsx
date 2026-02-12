@@ -60,8 +60,15 @@ const Dashboard = () => {
       const todayStart = startOfDay(now);
       const todayEnd = endOfDay(now);
 
-      // Fetch all data in parallel
-      const [{ data: groomingDataRaw }, { data: hotelDataRaw }] = await Promise.all([
+      // Fetch appointment data (for scheduling counts) + sales data (for revenue) in parallel
+      const [
+        { data: groomingDataRaw },
+        { data: hotelDataRaw },
+        { data: salesData },
+        { data: saleItemsData },
+        { data: plansData },
+        { data: hotelPaidData },
+      ] = await Promise.all([
         supabase
           .from('bath_grooming_appointments')
           .select('*')
@@ -72,13 +79,27 @@ const Dashboard = () => {
           .select('*')
           .gte('check_in', monthStart.toISOString())
           .lte('check_in', monthEnd.toISOString()),
+        // Revenue sources - same as Faturamento page
+        supabase
+          .from('sales')
+          .select('id, created_at, total_amount, payment_method, payment_status, client_id')
+          .eq('payment_status', 'pago'),
+        supabase
+          .from('sale_items')
+          .select('id, sale_id, description, item_type, quantity, unit_price, total_price, covered_by_plan, product_id'),
+        supabase
+          .from('client_plans')
+          .select('id, price_paid, purchased_at, client_id, pet_id'),
+        supabase
+          .from('hotel_stays')
+          .select('id, check_in, total_price, is_creche, payment_status')
+          .eq('payment_status', 'pago'),
       ]);
 
-      // Cast to include payment_status (added via migration)
       const groomingData = groomingDataRaw as Array<typeof groomingDataRaw[number] & { payment_status?: string }> | null;
       const hotelData = hotelDataRaw as Array<typeof hotelDataRaw[number] & { payment_status?: string }> | null;
 
-      // Today's data
+      // === SCHEDULING COUNTS (from appointments) ===
       const todayGroomingList = groomingData?.filter(apt => {
         const aptDate = new Date(apt.start_datetime);
         return isWithinInterval(aptDate, { start: todayStart, end: todayEnd });
@@ -91,11 +112,9 @@ const Dashboard = () => {
                isWithinInterval(checkIn, { start: todayStart, end: todayEnd });
       }) || [];
 
-      // Counts (excluding cancelled)
       const todayGrooming = todayGroomingList.filter(a => a.status !== 'cancelado').length;
       const todayHotel = todayHotelList.filter(s => s.status !== 'cancelado').length;
 
-      // Status do dia (grooming + hotel)
       const todayScheduled = 
         todayGroomingList.filter(a => a.status === 'agendado' || a.status === 'em_atendimento').length +
         todayHotelList.filter(s => s.status === 'reservado' || s.status === 'hospedado').length;
@@ -108,16 +127,7 @@ const Dashboard = () => {
         todayGroomingList.filter(a => a.status === 'cancelado').length +
         todayHotelList.filter(s => s.status === 'cancelado').length;
 
-      // Faturamento HOJE - serviços PAGOS
-      const todayCompletedRevenue = 
-        todayGroomingList.filter(a => a.payment_status === 'pago' || a.payment_status === 'isento').reduce((sum, a) => sum + (a.price || 0), 0) +
-        todayHotelList.filter(s => s.payment_status === 'pago' || s.payment_status === 'isento').reduce((sum, s) => sum + (s.total_price || 0), 0);
-
-      const todayFutureRevenue = 
-        todayGroomingList.filter(a => a.status !== 'cancelado' && a.payment_status !== 'pago' && a.payment_status !== 'isento').reduce((sum, a) => sum + (a.price || 0), 0) +
-        todayHotelList.filter(s => s.status !== 'cancelado' && s.payment_status !== 'pago' && s.payment_status !== 'isento').reduce((sum, s) => sum + (s.total_price || 0), 0);
-
-      // PAGAMENTOS PENDENTES - serviços FINALIZADOS mas NÃO PAGOS (crítico!)
+      // Pending payments (from appointments)
       const pendingGrooming = groomingData?.filter(a => 
         a.status === 'finalizado' && 
         a.payment_status !== 'pago' && 
@@ -135,17 +145,47 @@ const Dashboard = () => {
         pendingGrooming.reduce((sum, a) => sum + (a.price || 0), 0) +
         pendingHotel.reduce((sum, s) => sum + (s.total_price || 0), 0);
 
-      // Mês
+      // === REVENUE (from sales/plans/hotel - SAME as Faturamento page) ===
+      const allSales = salesData || [];
+      const allSaleItems = saleItemsData || [];
+      const allPlans = plansData || [];
+      const allHotelPaid = hotelPaidData || [];
+
+      // Today's revenue from sales
+      const todaySalesRevenue = allSales
+        .filter(s => new Date(s.created_at) >= todayStart)
+        .reduce((sum, s) => sum + (s.total_amount || 0), 0);
+      const todayPlansRevenue = allPlans
+        .filter(p => new Date(p.purchased_at) >= todayStart)
+        .reduce((sum, p) => sum + (p.price_paid || 0), 0);
+      const todayHotelRevenue = allHotelPaid
+        .filter(h => new Date(h.check_in) >= todayStart)
+        .reduce((sum, h) => sum + (h.total_price || 0), 0);
+      const todayCompletedRevenue = todaySalesRevenue + todayPlansRevenue + todayHotelRevenue;
+
+      // Future revenue (pending appointments today)
+      const todayFutureRevenue = 
+        todayGroomingList.filter(a => a.status !== 'cancelado' && a.payment_status !== 'pago' && a.payment_status !== 'isento').reduce((sum, a) => sum + (a.price || 0), 0) +
+        todayHotelList.filter(s => s.status !== 'cancelado' && s.payment_status !== 'pago' && s.payment_status !== 'isento').reduce((sum, s) => sum + (s.total_price || 0), 0);
+
+      // Month totals (scheduling counts from appointments)
       const monthGroomingActive = groomingData?.filter(a => a.status !== 'cancelado') || [];
       const monthGroomingTotal = monthGroomingActive.length;
       const monthGroomingCompleted = groomingData?.filter(a => a.payment_status === 'pago' || a.payment_status === 'isento').length || 0;
-
       const monthHotelActive = hotelData?.filter(s => s.status !== 'cancelado') || [];
       const monthHotelTotal = monthHotelActive.length;
 
-      const monthTotalRevenue = 
-        (groomingData?.filter(a => a.payment_status === 'pago' || a.payment_status === 'isento').reduce((sum, a) => sum + (a.price || 0), 0) || 0) +
-        (hotelData?.filter(s => s.payment_status === 'pago' || s.payment_status === 'isento').reduce((sum, s) => sum + (s.total_price || 0), 0) || 0);
+      // Month revenue (from sales - SAME as Faturamento)
+      const monthSalesRevenue = allSales
+        .filter(s => new Date(s.created_at) >= monthStart)
+        .reduce((sum, s) => sum + (s.total_amount || 0), 0);
+      const monthPlansRevenue = allPlans
+        .filter(p => new Date(p.purchased_at) >= monthStart)
+        .reduce((sum, p) => sum + (p.price_paid || 0), 0);
+      const monthHotelRevenue = allHotelPaid
+        .filter(h => new Date(h.check_in) >= monthStart)
+        .reduce((sum, h) => sum + (h.total_price || 0), 0);
+      const monthTotalRevenue = monthSalesRevenue + monthPlansRevenue + monthHotelRevenue;
 
       setData({
         todayGrooming,
@@ -172,20 +212,18 @@ const Dashboard = () => {
   useEffect(() => {
     fetchDashboardData();
 
-    // Realtime subscriptions
-    const groomingChannel = supabase
-      .channel('dashboard-grooming-simple')
+    // Realtime subscriptions - all sources used by both Dashboard and Faturamento
+    const channel = supabase
+      .channel('dashboard-all-sources')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'bath_grooming_appointments' }, fetchDashboardData)
-      .subscribe();
-
-    const hotelChannel = supabase
-      .channel('dashboard-hotel-simple')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'hotel_stays' }, fetchDashboardData)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sales' }, fetchDashboardData)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sale_items' }, fetchDashboardData)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'client_plans' }, fetchDashboardData)
       .subscribe();
 
     return () => {
-      supabase.removeChannel(groomingChannel);
-      supabase.removeChannel(hotelChannel);
+      supabase.removeChannel(channel);
     };
   }, [fetchDashboardData]);
 
