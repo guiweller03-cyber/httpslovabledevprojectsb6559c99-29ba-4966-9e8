@@ -74,37 +74,36 @@ export function RevenueBreakdown() {
       const weekStart = startOfWeek(now, { weekStartsOn: 0 });
       const weekEnd = endOfWeek(now, { weekStartsOn: 0 });
 
-      // Fetch sale_items with their parent sale info (only paid)
-      const { data, error } = await supabase
-        .from('sale_items')
-        .select(`
-          id,
-          item_type,
-          description,
-          total_price,
-          covered_by_plan,
-          sale:sales!inner (
-            id,
-            payment_status,
-            created_at,
-            total_amount
-          )
-        `)
-        .in('sale.payment_status', ['pago', 'pago_antecipado'])
-        .gte('sale.created_at', weekStart.toISOString())
-        .lte('sale.created_at', weekEnd.toISOString());
+      // Fetch sales and sale_items separately (no FK relationship)
+      const [{ data: salesData }, { data: itemsData }] = await Promise.all([
+        supabase
+          .from('sales')
+          .select('id, payment_status, created_at, total_amount')
+          .in('payment_status', ['pago', 'pago_antecipado'])
+          .gte('created_at', weekStart.toISOString())
+          .lte('created_at', weekEnd.toISOString()),
+        supabase
+          .from('sale_items')
+          .select('id, item_type, description, total_price, covered_by_plan, sale_id')
+      ]);
 
-      if (error) throw error;
-      
-      // Transform nested structure
-      const transformedData: SaleItemData[] = (data || []).map((item: any) => ({
-        id: item.id,
-        item_type: item.item_type,
-        description: item.description || '',
-        total_price: item.total_price || 0,
-        covered_by_plan: item.covered_by_plan || false,
-        sale: item.sale
-      }));
+      // Build a map of valid sale IDs
+      const salesMap: Record<string, any> = {};
+      (salesData || []).forEach((s: any) => {
+        salesMap[s.id] = s;
+      });
+
+      // Transform: only include items whose sale is in the filtered set
+      const transformedData: SaleItemData[] = (itemsData || [])
+        .filter((item: any) => item.sale_id && salesMap[item.sale_id])
+        .map((item: any) => ({
+          id: item.id,
+          item_type: item.item_type,
+          description: item.description || '',
+          total_price: item.total_price || 0,
+          covered_by_plan: item.covered_by_plan || false,
+          sale: salesMap[item.sale_id]
+        }));
       
       setSalesData(transformedData);
     } catch (error) {
