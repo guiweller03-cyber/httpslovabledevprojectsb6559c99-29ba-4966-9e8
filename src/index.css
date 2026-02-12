@@ -277,3 +277,14 @@
 ::-webkit-scrollbar-thumb:hover {
   @apply bg-muted-foreground/50;
 }
+
+/* Calendar event color coding by service type */
+.event-banho {
+  border-left: 4px solid #3b82f6 !important;
+  border-color: #3b82f6 !important;
+}
+
+.event-banho-tosa {
+  border-left: 4px solid #eab308 !important;
+  border-color: #eab308 !important;
+}
