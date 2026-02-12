@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Users, Plus, Search, Phone, Mail, Dog, Cat, Edit, TrendingUp, PawPrint } from 'lucide-react';
+import { Users, Plus, Search, Phone, Mail, Dog, Cat, Edit, TrendingUp, PawPrint, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent as AlertDialogContentComp, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
@@ -466,6 +467,40 @@ const Clientes = () => {
                         >
                           <Edit className="w-4 h-4" />
                         </Button>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive hover:bg-destructive/10">
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContentComp>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Excluir cliente</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Tem certeza que deseja excluir <strong>{client.name}</strong>? Esta ação também removerá todos os pets associados e não pode ser desfeita.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                              <AlertDialogAction
+                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                onClick={async () => {
+                                  await supabase.from('pets').delete().eq('client_id', client.id);
+                                  const { error } = await supabase.from('clients').delete().eq('id', client.id);
+                                  if (error) {
+                                    toast({ title: 'Erro ao excluir', description: error.message, variant: 'destructive' });
+                                  } else {
+                                    toast({ title: 'Cliente excluído', description: `${client.name} foi removido.` });
+                                    fetchClients();
+                                    fetchPets();
+                                  }
+                                }}
+                              >
+                                Excluir
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContentComp>
+                        </AlertDialog>
                       </div>
                     </div>
                   </motion.div>
