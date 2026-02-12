@@ -9,7 +9,6 @@ import {
   Scissors,
   Home,
   Package,
-  Syringe,
   Sparkles,
   ChevronDown,
   Users,
@@ -350,8 +349,8 @@ const Faturamento = () => {
     let additionalsCount = 0;
     let productsTotal = 0;
     let productsCount = 0;
-    let vaccinesTotal = 0;
-    let vaccinesCount = 0;
+
+
 
     filteredSales.forEach(sale => {
       sale.items.forEach(item => {
@@ -363,9 +362,6 @@ const Faturamento = () => {
         if (type === 'adicional' || desc.includes('adicional')) {
           additionalsTotal += item.total_price;
           additionalsCount += item.quantity;
-        } else if (type === 'vacina' || desc.includes('vacina') || desc.includes('vermífugo') || desc.includes('antipulgas')) {
-          vaccinesTotal += item.total_price;
-          vaccinesCount += item.quantity;
         } else if (type === 'produto' || item.product_id) {
           productsTotal += item.total_price;
           productsCount += item.quantity;
@@ -392,7 +388,7 @@ const Faturamento = () => {
     const crecheTotal = filteredHotel.filter(h => h.is_creche).reduce((sum, h) => sum + (h.total_price || 0), 0);
     const crecheCount = filteredHotel.filter(h => h.is_creche).length;
 
-    const grandTotal = servicesTotal + additionalsTotal + productsTotal + vaccinesTotal + plansTotal + hotelTotal + crecheTotal;
+    const grandTotal = servicesTotal + additionalsTotal + productsTotal + plansTotal + hotelTotal + crecheTotal;
 
     const categories: CategoryStats[] = [
       {
@@ -434,14 +430,6 @@ const Faturamento = () => {
         total: crecheTotal,
         count: crecheCount,
         percentage: grandTotal > 0 ? (crecheTotal / grandTotal) * 100 : 0,
-      },
-      {
-        name: 'Vacinas/Vermífugos',
-        icon: <Syringe className="w-5 h-5" />,
-        color: 'bg-red-500',
-        total: vaccinesTotal,
-        count: vaccinesCount,
-        percentage: grandTotal > 0 ? (vaccinesTotal / grandTotal) * 100 : 0,
       },
       {
         name: 'Produtos',
