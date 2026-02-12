@@ -14,7 +14,9 @@ import {
   Droplets,
   DollarSign,
   GripVertical,
-  User
+  User,
+  MessageCircle,
+  Loader2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -23,6 +25,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
+import { sendPetProntoWebhook } from '@/lib/webhooks';
 
 type KanbanStatus = 'espera' | 'banho' | 'secando' | 'tosa' | 'concluido';
 
@@ -103,6 +106,7 @@ export default function ServicosDoDia() {
   const [addons, setAddons] = useState<ServiceAddon[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [draggedCard, setDraggedCard] = useState<string | null>(null);
+  const [sendingPetPronto, setSendingPetPronto] = useState<string | null>(null);
 
   const today = new Date();
   const todayStr = format(today, 'yyyy-MM-dd');
@@ -324,6 +328,65 @@ export default function ServicosDoDia() {
     navigate(`/caixa?appointmentId=${apt.id}`);
   };
 
+  const handlePetPronto = async (apt: Appointment) => {
+    setSendingPetPronto(apt.id);
+    const pet = getPet(apt.pet_id);
+    const client = getClient(apt.client_id);
+    const now = new Date().toISOString();
+    const notaHistorico = `[${new Date().toLocaleString('pt-BR')}] ✅ Pet marcado como PRONTO. WhatsApp enviado para ${client?.name || 'tutor'} (${client?.whatsapp || ''}).`;
+    const notasAtualizadas = apt.notes ? `${apt.notes}\n${notaHistorico}` : notaHistorico;
+
+    // 1. Update status in database
+    const { error } = await supabase
+      .from('bath_grooming_appointments')
+      .update({ 
+        kanban_status: 'concluido',
+        status: 'pronto',
+        completed_time: now,
+        notes: notasAtualizadas,
+      })
+      .eq('id', apt.id);
+
+    if (error) {
+      toast({ title: "Erro", description: "Não foi possível atualizar o status.", variant: "destructive" });
+      setSendingPetPronto(null);
+      return;
+    }
+
+    // 2. Update local state
+    setAppointments(prev =>
+      prev.map(a =>
+        a.id === apt.id ? { ...a, kanban_status: 'concluido', status: 'pronto', completed_time: now, notes: notasAtualizadas } : a
+      )
+    );
+
+    // 3. Send WhatsApp notification via webhook
+    const serviceName = apt.service_type === 'banho' ? 'Banho' : 'Banho + Tosa';
+    const webhookResult = await sendPetProntoWebhook({
+      action: 'pet_pronto',
+      pet_name: pet?.name || 'Pet',
+      client_name: client?.name || 'Cliente',
+      client_whatsapp: client?.whatsapp || '',
+      service: serviceName,
+      appointment_id: apt.id,
+    });
+
+    if (webhookResult.success) {
+      toast({
+        title: "🐾 Pet Pronto!",
+        description: `${pet?.name} está pronto! WhatsApp enviado para ${client?.name}.`,
+      });
+    } else {
+      toast({
+        title: "⚠️ Pet Pronto (WhatsApp falhou)",
+        description: `Status atualizado, mas a mensagem WhatsApp não foi enviada. Avise o tutor manualmente.`,
+        variant: "destructive",
+      });
+    }
+
+    setSendingPetPronto(null);
+  };
+
   const KanbanCard = ({ apt }: { apt: Appointment }) => {
     const pet = getPet(apt.pet_id);
     const client = getClient(apt.client_id);
@@ -458,19 +521,38 @@ export default function ServicosDoDia() {
               )}
             </div>
             
-            {/* Action button - Finalizar Atendimento */}
+            {/* Action buttons */}
             {!isCompleted && (
-              <Button
-                size="sm"
-                className="w-full mt-3 bg-primary hover:bg-primary/90 gap-2"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleFinalizarAtendimento(apt);
-                }}
-              >
-                <CheckCircle2 className="w-4 h-4" />
-                Ir para pagamento
-              </Button>
+              <div className="flex gap-2 mt-3">
+                <Button
+                  size="sm"
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 gap-1"
+                  disabled={sendingPetPronto === apt.id}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handlePetPronto(apt);
+                  }}
+                >
+                  {sendingPetPronto === apt.id ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <MessageCircle className="w-4 h-4" />
+                  )}
+                  Pet Pronto
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="flex-1 gap-1"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleFinalizarAtendimento(apt);
+                  }}
+                >
+                  <DollarSign className="w-4 h-4" />
+                  Pagamento
+                </Button>
+              </div>
             )}
 
             {/* Payment status for completed items */}
