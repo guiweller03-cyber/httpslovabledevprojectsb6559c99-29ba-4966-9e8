@@ -102,7 +102,7 @@ const Dashboard = () => {
       
       const todayCompleted = 
         todayGroomingList.filter(a => a.status === 'finalizado').length +
-        todayHotelList.filter(s => s.status === 'check_out_realizado').length;
+        todayHotelList.filter(s => s.status === 'check_out').length;
       
       const todayCancelled = 
         todayGroomingList.filter(a => a.status === 'cancelado').length +
